@@ -1,0 +1,8 @@
+.gradle/
+build/
+.idea/
+*.iml
+*.duckdb
+*.duckdb.wal
+*.duckdb.lock
+*.duckdb.tmp/

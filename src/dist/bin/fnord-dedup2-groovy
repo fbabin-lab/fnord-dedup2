@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+APP_HOME=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+JAVA="${JAVA_HOME:+$JAVA_HOME/bin/}java"
+read -r -a EXTRA_OPTS <<< "${JAVA_OPTS:-}"
+exec "$JAVA" -Xms64m -Xmx512m "${EXTRA_OPTS[@]}" -cp "$APP_HOME/lib/*" groovy.ui.GroovyMain "$@"
