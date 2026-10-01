@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Kill after appender flush but before commit; metadata/checkpoint must roll back."""
+"""Kill after bulk-writer flush but before commit, including after a prior checkpoint."""
 import json
 from pathlib import Path
 import signal
@@ -20,7 +20,7 @@ def command(db, *args):
     return result.stdout
 
 
-def main():
+def scenario(commit_first):
     with tempfile.TemporaryDirectory(prefix='fnord-dedup2-rollback-') as temp:
         base = Path(temp)
         root = base / 'input'
@@ -32,31 +32,33 @@ def main():
         script = base / 'uncommitted.groovy'
         script.write_text('''
 import fnord.dedup.*
+import fnord.dedup.store.BulkWriter
 import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
-Dedup.open(Path.of(args[0]), new ScanOptions(databaseThreads: 1, memoryLimit: '128MB')).withCloseable { d ->
+boolean commitFirst = args[3] == 'yes'
+def options = new ScanOptions(databaseThreads: 1, memoryLimit: '128MB')
+Dedup.open(Path.of(args[0]), options).withCloseable { d ->
     def root = Path.of(args[1])
     def scan = d.createScan('rollback', root)
     long id = scan.scan_id as long
-    def attrs = Files.readAttributes(root.resolve('a'), BasicFileAttributes)
-    def modified = attrs.lastModifiedTime().toInstant()
-    // createScan committed the empty queue/root. Everything below is deliberately
-    // uncommitted, including data that has been flushed out of the bulk appender.
-    d.store.connection.autoCommit = false
-    d.store.connection.createAppender('main', 'entries').withCloseable { a ->
-        a.beginRow()
-        a.append(id); a.append(2L); a.append(1L)
-        a.append('a'); a.append('a'); a.append('FILE')
-        a.append(attrs.size()); a.append(modified.epochSecond); a.append(modified.nano)
-        a.endRow()
+    def writer = new BulkWriter(d.store, id, 'discovery', 2L, options, { event -> })
+    if (commitFirst) {
+        writer.entry(writer.allocateId(), 1L, 'a', 'a', 'FILE', Files.readAttributes(root.resolve('a'), BasicFileAttributes))
+        writer.checkpoint(1L)
     }
-    d.store.exec('UPDATE scans SET active_dir=1,next_entry_id=3 WHERE scan_id=?', id)
-    assert d.store.rows("SELECT count(*) AS n FROM entries WHERE kind='FILE'")[0].n == 1
+    def name = commitFirst ? 'b' : 'a'
+    writer.entry(writer.allocateId(), 1L, name, name, 'FILE', Files.readAttributes(root.resolve(name), BasicFileAttributes))
+    // No SQL between the previous commit and this flush: that would conceal
+    // JDBC's lazy transaction-start behavior and fail to test BulkWriter itself.
+    writer.flushPendingRows()
+    d.store.exec('UPDATE scans SET active_dir=1,next_entry_id=? WHERE scan_id=?', writer.nextEntryId, id)
+    assert d.store.rows("SELECT count(*) AS n FROM entries WHERE kind='FILE'")[0].n == (commitFirst ? 2 : 1)
     Files.writeString(Path.of(args[2]), 'flushed but uncommitted')
     Thread.sleep(600000)
 }
 ''', encoding='utf-8')
-        process = subprocess.Popen([str(GROOVY), str(script), str(db), str(root), str(marker)],
+        process = subprocess.Popen([str(GROOVY), str(script), str(db), str(root), str(marker),
+                                    'yes' if commit_first else 'no'],
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
             deadline = time.monotonic() + 60
@@ -75,15 +77,17 @@ Dedup.open(Path.of(args[0]), new ScanOptions(databaseThreads: 1, memoryLimit: '1
                 process.communicate(timeout=15)
         before = json.loads(command(db, 'status', '--name', 'rollback'))
         assert before['phase'] == 'DISCOVERING', before
-        assert before['files'] == 0 and before['directories'] == 1, before
-        assert before['pending_directories'] == 1, before
+        assert before['files'] == (1 if commit_first else 0), before
+        assert before['directories'] == 1 and before['pending_directories'] == 1, before
         after = json.loads(command(db, 'resume', '--name', 'rollback', '--quiet'))
         assert after['phase'] == 'COMPLETE', after
         assert after['files'] == 2 and after['hashes_completed'] == 2, after
         matches = [json.loads(line) for line in command(db, 'duplicates', '--name', 'rollback', '--format', 'jsonl').splitlines()]
         assert len(matches) == 2 and len({row['path'] for row in matches}) == 2
-    print('PASS: SIGKILL rolls back flushed but uncommitted appender data and checkpoint')
+    print('PASS: SIGKILL rolls back flushed uncommitted rows',
+          'after a prior checkpoint' if commit_first else 'in the initial transaction')
 
 
 if __name__ == '__main__':
-    main()
+    scenario(False)
+    scenario(True)

@@ -37,6 +37,17 @@ final class BulkWriter implements AutoCloseable {
         this.progress = progress
         if (!store.connection.autoCommit) throw new IllegalStateException('Writer requires a free connection')
         store.connection.autoCommit = false
+        activateTransaction()
+    }
+
+    /**
+     * DuckDB JDBC starts its native transaction lazily on statement execution.
+     * Merely setting autoCommit=false does NOT enlist a newly created appender.
+     * Force that lazy BEGIN before any appender is opened, initially AND after
+     * every commit. Otherwise a flush can persist rows without their checkpoint.
+     */
+    private void activateTransaction() {
+        store.exec('SELECT 1')
     }
 
     private DuckDBAppender appender(String table) {
@@ -97,6 +108,11 @@ final class BulkWriter implements AutoCloseable {
         dirty = true
     }
 
+    /** Flush native buffers without committing. Useful for transaction verification. */
+    void flushPendingRows() {
+        for (DuckDBAppender a : appenders.values()) a.flush()
+    }
+
     void maybeCheckpoint(Long activeDirectory) {
         if (rowsInTransaction >= options.batchSize || completedDirectories.size() >= options.directoryBatchSize ||
             System.nanoTime() - lastCommitNanos >= options.commitIntervalMillis * 1_000_000L) {
@@ -121,6 +137,7 @@ final class BulkWriter implements AutoCloseable {
         completedDirectories.clear()
         rowsInTransaction = 0L
         dirty = false
+        activateTransaction()
         lastCommitNanos = System.nanoTime()
         progress.call([stage: stage, entries_written_this_run: entriesWritten,
                        hashes_written_this_run: hashesWritten, errors_this_run: errorsWritten])
