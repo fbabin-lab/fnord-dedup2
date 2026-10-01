@@ -22,7 +22,9 @@ jobs:
       - name: Build and unit/integration tests
         run: ./gradlew --no-daemon test installDist distTar
       - name: Installed application and process recovery tests
-        run: python3 scripts/process-smoke.py
+        run: |
+          python3 scripts/process-smoke.py
+          python3 scripts/rollback-smoke.py
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
