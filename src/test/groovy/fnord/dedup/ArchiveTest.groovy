@@ -4,6 +4,7 @@ import fnord.dedup.archive.*
 import fnord.dedup.cli.Main
 import groovy.json.JsonSlurper
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Assumptions
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.*
 import java.security.MessageDigest
@@ -16,6 +17,16 @@ class ArchiveTest {
     ArchiveOptions options() { new ArchiveOptions(minFreeBytes:0,maxExpandedBytes:64L*1024*1024,maxTempBytes:128L*1024*1024) }
     Path root() { Files.createDirectories(work.resolve('input')) }
     Path database() { work.resolve('scans.duckdb') }
+
+    void requireNativeArchiveRuntime() {
+        Path probe = Files.createDirectories(work.resolve('native-runtime-probe'))
+        try {
+            new NativeArchiveProvider().identity(probe, options(), new StopToken())
+        } catch (IOException failure) {
+            Assumptions.assumeTrue(false,
+                'Native archive runtime unavailable; archive integration test skipped: ' + failure.message)
+        }
+    }
 
     static byte[] zip(Map<String,byte[]> files) {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream()
@@ -38,6 +49,7 @@ class ArchiveTest {
     }
 
     @Test void hashesUniqueSizeArchivesWithoutChangingNormalHashPhaseAndReusesCopies() {
+        requireNativeArchiveRuntime()
         Path input=root()
         byte[] contents=zip(['a.txt':'hello'.bytes,'folder/b.txt':'world!!!'.bytes])
         Files.write(input.resolve('one.zip'),contents)
@@ -65,6 +77,7 @@ class ArchiveTest {
     }
 
     @Test void nestedDuplicatesAreSharedAndCanBeReusedAcrossNamedScans() {
+        requireNativeArchiveRuntime()
         Path input=root()
         byte[] inner=zip(['file.txt':'inside'.bytes])
         Files.write(input.resolve('inner.zip'),inner)
@@ -86,6 +99,7 @@ class ArchiveTest {
     }
 
     @Test void rejectsUnsafePathsButKeepsSafeFiles() {
+        requireNativeArchiveRuntime()
         Path input=root()
         Files.write(input.resolve('unsafe.zip'),zip(['../escape':'no'.bytes,'/absolute':'no'.bytes,'good\nfile':'yes'.bytes]))
         Dedup.open(database(),scanOptions()).withCloseable { d ->
@@ -101,6 +115,7 @@ class ArchiveTest {
     }
 
     @Test void depthLimitedResultsDoNotPoisonLaterRetry() {
+        requireNativeArchiveRuntime()
         Path input=root()
         Files.write(input.resolve('outer.zip'),zip(['inside.zip':zip(['a':'a'.bytes])]))
         Dedup.open(database(),scanOptions()).withCloseable { d ->
@@ -116,6 +131,7 @@ class ArchiveTest {
     }
 
     @Test void sizeLimitsStopExtractionAndRetainPreviouslyRecoveredFiles() {
+        requireNativeArchiveRuntime()
         Path input=root()
         Files.write(input.resolve('large.zip'),zip(['small':'s'.bytes,'large':new byte[4096]]))
         Dedup.open(database(),scanOptions()).withCloseable { d ->
@@ -130,6 +146,7 @@ class ArchiveTest {
     }
 
     @Test void archiveChangedSinceDiscoveryIsNotAnalyzed() {
+        requireNativeArchiveRuntime()
         Path input=root()
         Path file=input.resolve('changed.zip')
         Files.write(file,zip(['a':'a'.bytes]))
@@ -144,6 +161,7 @@ class ArchiveTest {
     }
 
     @Test void emptyArchiveAndEmptyScanComplete() {
+        requireNativeArchiveRuntime()
         Path input=root()
         Files.write(input.resolve('empty.zip'),zip([:]))
         Dedup.open(database(),scanOptions()).withCloseable { d ->
@@ -169,6 +187,7 @@ class ArchiveTest {
     }
 
     @Test void archiveCommandsAreRegisteredAndMachineReadable() {
+        requireNativeArchiveRuntime()
         Path input=root()
         Files.write(input.resolve('a.zip'),zip(['file':'bytes'.bytes]))
         Dedup.open(database(),scanOptions()).withCloseable { it.scan('s',input,new StopToken(),true) }
