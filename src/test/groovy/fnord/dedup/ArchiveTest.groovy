@@ -253,7 +253,7 @@ class ArchiveTest {
             ArchiveOptions limited=options(); limited.minSizeBytes=combined+1L
             Map state=d.analyzeArchives('m',limited)
             assert state.skipped==1
-            Map skipped=archives(d).find { it.location_kind=='ROOT' }
+            Map skipped=archives(d,'m').find { it.location_kind=='ROOT' }
             assert skipped.status=='SKIPPED'
             assert d.store.rows('SELECT sum(size) AS n FROM archive_volumes WHERE result_id=?',skipped.result_id)[0].n==combined
         }
