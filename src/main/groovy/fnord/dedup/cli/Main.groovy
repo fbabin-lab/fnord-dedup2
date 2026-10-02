@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
 
 @Command(name='fnord-dedup2', mixinStandardHelpOptions=true, version='fnord-dedup2 0.1.0',
     description='Resumable, read-only duplicate-file scanning with DuckDB.',
-    subcommands=[ScanCommand, ResumeCommand, HashCommand, ListCommand, StatusCommand, DuplicatesCommand, ErrorsCommand,
+    subcommands=[ImagesCommand, ImageStatusCommand, ImageListCommand, ImageEntriesCommand, ImageFilesystemsCommand, ImagePartitionsCommand, ImageComponentsCommand, ImageErrorsCommand, ScanCommand, ResumeCommand, HashCommand, ListCommand, StatusCommand, DuplicatesCommand, ErrorsCommand,
         ArchivesCommand, ArchiveStatusCommand, ArchiveListCommand, ArchiveEntriesCommand, ArchiveVolumesCommand, ArchiveErrorsCommand])
 class Main implements Runnable {
     @Option(names='--db', scope=ScopeType.INHERIT, defaultValue='scans.duckdb', description='DuckDB file (default: ${DEFAULT-VALUE}).')
