@@ -353,6 +353,7 @@ class CrossScanTest {
             assert r.rows.size()==4 && r.rows*.path.toSet().size()==2
             assert r.rows*.scan_name.toSet()==[a,b].toSet()
             assert r.rows*.filename.toSet()==files.keySet()
+        }
     }
 
     @Test void archiveAndImagePayloadsAreNotExtractedByComparison() {
