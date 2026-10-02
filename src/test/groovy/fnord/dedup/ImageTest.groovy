@@ -7,7 +7,6 @@ import org.junit.jupiter.api.io.TempDir
 import java.nio.ByteBuffer
 import java.nio.file.*
 import java.security.MessageDigest
-import java.util.concurrent.CancellationException
 import static org.junit.jupiter.api.Assertions.*
 
 class ImageTest {
@@ -37,7 +36,6 @@ class ImageTest {
     Map analyze(Dedup d,FakeProvider p,ImageOptions o=io(),StopToken s=new StopToken(),Closure progress={}) {
         new ImageAnalysis(d.store,so(),o,s,progress,p).run('test')
     }
-
     @Test void hashesMembersAndReusesIdenticalContainersWithoutNormalHashes() {
         Files.writeString(input().resolve('a.img'),'raw bytes')
         Files.copy(input().resolve('a.img'),input().resolve('b.img'))
@@ -45,9 +43,7 @@ class ImageTest {
             d.scan('test',input(),new StopToken(),true)
             def p=new FakeProvider()
             Map status=analyze(d,p)
-            assert status.phase=='COMPLETE'
-            assert status.duplicates==1
-            assert p.calls==1
+            assert status.phase=='COMPLETE' && status.duplicates==1 && p.calls==1
             assert d.status('test').hashes_completed==0
             List<Map> images=[];d.eachImage('test') { images.add(it) }
             assert images.size()==2 && images*.result_id.toSet().size()==1
@@ -72,8 +68,7 @@ class ImageTest {
             d.scan('test',input(),new StopToken(),true)
             def stop=new StopToken()
             def p=new FakeProvider(body:{w,c,o,s,e ->
-                e.call(entry(1L));e.call(entry(2L,'/other'))
-                s.cancel();s.check()
+                e.call(entry(1L));e.call(entry(2L,'/other'));s.cancel();s.check()
             })
             assert analyze(d,p,io(),stop).phase=='PAUSED'
             String id=d.store.rows('SELECT result_id FROM image_results')[0].result_id
@@ -105,7 +100,7 @@ class ImageTest {
         engine().withCloseable { d ->
             d.scan('test',input(),new StopToken(),true)
             def p=new FakeProvider(body:{w,c,o,s,e ->
-                e.call(entry()); Files.writeString(input().resolve('disk.raw'),'different content')
+                e.call(entry());Files.writeString(input().resolve('disk.raw'),'different content')
                 [entries:1L,errors:0L]
             })
             assert analyze(d,p).phase=='COMPLETE_WITH_ERRORS'
@@ -141,6 +136,8 @@ class ImageTest {
         byte[] bytes=new byte[512]
         ByteBuffer b=ByteBuffer.wrap(bytes)
         b.putInt(0,0x514649fb);b.putInt(4,3);b.putLong(8,128L);b.putInt(16,backing.bytes.length);b.putInt(20,9);b.putInt(100,104)
+        b.putInt(104,(int)0xe2792aca);b.putInt(108,3)
+        System.arraycopy('raw'.bytes,0,bytes,112,3)
         System.arraycopy(backing.bytes,0,bytes,128,backing.bytes.length)
         bytes
     }
@@ -191,5 +188,26 @@ class ImageTest {
             d.discover('test')
             assertThrows(IllegalArgumentException) { analyze(d,new FakeProvider(),new ImageOptions(tempDirectory:input().resolve('temp'))) }
         }
+    }
+    @Test void unknownBackingFormatIsRejectedRatherThanGuessingRaw() {
+        byte[] header=qcow('base.bin');Arrays.fill(header,104,128,(byte)0)
+        Files.write(input().resolve('disk.qcow2'),header)
+        Files.writeString(input().resolve('base.bin'),'opaque backing')
+        engine().withCloseable { d ->
+            d.scan('test',input(),new StopToken(),true)
+            def p=new FakeProvider();assert analyze(d,p).phase=='COMPLETE_WITH_ERRORS';assert p.calls==0
+            assert d.store.rows('SELECT code FROM image_errors')[0].code=='UNSPECIFIED_BACKING_FORMAT'
+        }
+    }
+    @Test void progressStateChangesAreNotHiddenByTimeThrottling() {
+        Main main=new Main();StringWriter err=new StringWriter()
+        def cli=Main.commandLine(main).setErr(new PrintWriter(err))
+        cli.parseArgs('--db',work.resolve('progress.duckdb').toString(),'--memory-limit','128MB')
+        main.withEngine { d ->
+            d.progress([stage:'image',state:'OPENING'])
+            d.progress([stage:'image',state:'INSPECTING'])
+            d.progress([stage:'image',state:'SCANNING'])
+        }
+        assert err.toString().readLines().size()==3
     }
 }

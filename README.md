@@ -2,11 +2,11 @@
 
 Linux duplicate-file analysis in **Groovy**, with a **CLI**, a **synchronous scripting API**, and an embedded **DuckDB** database containing multiple named scans. No server or separate Groovy installation is required.
 
-The application never deletes, moves, hard-links, or rewrites source files. Archive extraction writes only disposable temporary data.
+The application never deletes, moves, hard-links, or rewrites source files. Container analysis writes only disposable temporary data.
 
 ## Build
 
-On Ubuntu 24.04, install Java and build prerequisites. Archive analysis additionally needs Python 3 and native libarchive:
+On Ubuntu 24.04:
 
 ```bash
 sudo apt-get update
@@ -18,58 +18,83 @@ cd fnord-dedup2
 ./bin/fnord-dedup2 --help
 ```
 
-`gradlew` is the existing Linux-only bootstrap: it downloads a pinned Gradle distribution and verifies its SHA-256. The first build needs Internet access. The installed distribution is `build/install/fnord-dedup2/`; `./bin/fnord-dedup2` launches it without starting Gradle. Rebuild after source changes. Java 21 is required at runtime.
+`gradlew` is a Linux-only bootstrap that downloads a pinned Gradle distribution and verifies its SHA-256. The first build needs Internet access. The installation is `build/install/fnord-dedup2/`; `./bin/fnord-dedup2` launches it without starting Gradle. Rebuild after source changes. Java 21 is required at runtime.
 
 ## Filesystem phases
 
 ```bash
 DB="$HOME/scans.duckdb"
-
 ./bin/fnord-dedup2 --db "$DB" scan --name "archive-01" --root /data/source
 ./bin/fnord-dedup2 --db "$DB" duplicates --name "archive-01" --format jsonl
 ```
 
-Discovery records paths, filenames, types, sizes, and modification dates without reading file contents. Hashing then reads only regular files that share a size within that scan; matching size and full-file SHA-256 define a duplicate group. Inode/permissions/ownership/block/link-count metadata are not collected.
+Discovery records paths, filenames, types, sizes and modification dates without reading file contents. Hashing reads only regular files that share a size within that scan; matching size and full-file SHA-256 define a duplicate group. Inode/permissions/ownership/block/link-count metadata are not collected.
 
-Use `scan --discover-only` and then `hash --name ...` to separate those phases. Stop with Ctrl+C and continue with `resume --name ...`. Completed hashes are reused; interrupted work is redone. Resume continues the saved inventory; it does not refresh changed directories.
+Use `scan --discover-only` then `hash --name ...` to separate the phases. Stop with Ctrl+C and continue with `resume --name ...`. Completed hashes are reused; interrupted work is redone. Resume continues the saved inventory; it does not refresh changed directories.
 
-See [the detailed filesystem guide](docs/FILESYSTEM.md) for commands, tuning, crash recovery and correctness boundaries.
+See [the filesystem guide](docs/FILESYSTEM.md) for commands, tuning, recovery and correctness boundaries.
 
 ## Optional archive phase
 
-Archive analysis starts **only when explicitly requested**, after filesystem discovery. It does not require the ordinary hashing phase to have run.
+Archive analysis starts **only when explicitly requested**, after filesystem discovery. Ordinary hashing need not have run.
 
 ```bash
-./bin/fnord-dedup2 --db "$DB" archives --name "archive-01" \
-  --archive-temp "$HOME/fnord-archive-temp"
-
+./bin/fnord-dedup2 --db "$DB" archives --name "archive-01" --archive-temp "$HOME/fnord-archive-temp"
 ./bin/fnord-dedup2 --db "$DB" archive-status --name "archive-01"
 ./bin/fnord-dedup2 --db "$DB" archive-list --name "archive-01"
 ./bin/fnord-dedup2 --db "$DB" archive-errors --name "archive-01"
 
-# Copy a result_id returned by archive-list:
+# Copy a result_id from archive-list:
 ./bin/fnord-dedup2 --db "$DB" archive-entries --result RESULT_UUID
 ./bin/fnord-dedup2 --db "$DB" archive-volumes --result RESULT_UUID
 ```
 
-The native libarchive engine handles extraction through a bounded Python bridge. The application does not parse human-oriented `tar`, `unzip`, or `unrar` output. There is only one active extractor; nested archives are processed depth-first in separate temporary directories.
+Native libarchive extracts through a bounded Python bridge. The application does not parse human-readable tar/unzip/unrar output. Only one extractor is active; nested archives are processed depth-first in separate temporary directories.
 
-Archive members retain their logical paths, filenames, types, sizes, timestamps and SHA-256. Exact duplicate archive sets share an immutable canonical result rather than being re-extracted. This applies to nested archives and other named scans in the same database. Corrupt members are distinguished from readable members; damaged recovered bytes never receive a normal confirmed-content hash.
+Members retain logical paths, filenames, types, sizes, available timestamps and SHA-256. Exact duplicate archive sets share immutable canonical results instead of being extracted again, including nested archives and other named scans in the same database. Damaged recovered bytes never receive normal confirmed-content hashes.
 
-Run the same `archives --name ...` command after interruption. The current archive may be extracted again; completed results remain available. **Ordinary `resume` still handles only filesystem phases.** Use `archives --retry-errors` for terminal partial results, or `archives --force` to bypass caches. Create a new named filesystem scan after adding missing volumes or changing source files.
+Repeat `archives --name ...` after interruption. The current archive may be extracted again; completed results survive. Ordinary `resume` still handles only filesystem phases. Use `archives --retry-errors` for terminal partial results or `--force` to bypass caches. New volumes or changed source files require a new named scan.
 
-Temporary storage must be outside the scanned source tree. Defaults include depth 32, one million members per archive, 100 GiB per extraction and temporary stack, a 1 GiB free-space reserve, and a one-hour extractor timeout. These are adjustable; see [the archive guide](docs/ARCHIVES.md).
+Temporary storage must be outside the scanned tree. Finite adjustable defaults include depth 32, one million members per archive, 100 GiB per extraction/temporary stack, 1 GiB free reserve and one-hour extractor timeout. See [the archive guide](docs/ARCHIVES.md).
+
+## Optional disk-image phase
+
+Image analysis is separately requested after discovery:
+
+```bash
+sudo apt-get install -y qemu-utils python3-guestfs libguestfs-tools
+libguestfs-test-tool
+
+./bin/fnord-dedup2 --db "$DB" images --name "archive-01" --image-temp "$HOME/fnord-image-temp"
+./bin/fnord-dedup2 --db "$DB" image-status --name "archive-01"
+./bin/fnord-dedup2 --db "$DB" image-list --name "archive-01"
+./bin/fnord-dedup2 --db "$DB" image-errors --name "archive-01"
+
+# Copy a result_id from image-list:
+./bin/fnord-dedup2 --db "$DB" image-filesystems --result RESULT_UUID
+./bin/fnord-dedup2 --db "$DB" image-partitions --result RESULT_UUID
+./bin/fnord-dedup2 --db "$DB" image-components --result RESULT_UUID
+./bin/fnord-dedup2 --db "$DB" image-entries --result RESULT_UUID
+```
+
+Candidate families: VMDK, QCOW1/QCOW2, VDI, VHD/VHDX, QED, IMG/RAW/DD, ISO and DMG. QEMU decodes approved storage read-only; libguestfs discovers partitions/filesystems and streams guest files into SHA-256. Its trusted inspection appliance is started; the source guest OS is never booted. No root execution, host filesystem mounts, repair or source writes are permitted.
+
+Run as a regular user on a Linux host with Landlock enabled and a working libguestfs appliance. Dependencies must be present in the saved inventory, safe and explicitly typed. Exact complete component fingerprints can reuse canonical results. Unsupported format variants, missing dependencies, encrypted/unmountable filesystems and failed reads produce errors, not invented file contents.
+
+Repeat `images --name ...` after interruption. Use `--image-container-hash candidate|always|never` to control physical image-hashing cost; every readable guest regular file is still hashed. Temporary storage defaults to `<database>.images-tmp` and must be outside the source root. See [the image guide](docs/IMAGES.md) for installation diagnostics, limits, read-only guarantees, format boundaries and retry semantics.
+
+Nested archive/image dispatch, differencing VHD/VHDX, password management, OS inventory, DMG conversion fallback and combined cross-domain duplicate reports are not implemented in this phase. Container support is separate from inner-filesystem support.
 
 ## Scripting
 
-The distribution includes its Groovy runner:
+The distribution includes a Groovy runner:
 
 ```bash
-build/install/fnord-dedup2/bin/fnord-dedup2-groovy \
-  examples/archives.groovy "$DB" "archive-01" "$HOME/fnord-archive-temp"
+build/install/fnord-dedup2/bin/fnord-dedup2-groovy examples/archives.groovy "$DB" "archive-01" "$HOME/fnord-archive-temp"
+build/install/fnord-dedup2/bin/fnord-dedup2-groovy examples/images.groovy "$DB" "archive-01" "$HOME/fnord-image-temp"
 ```
 
-The same `Dedup` API exposes `analyzeArchives`, `archiveStatus`, `eachArchive`, `eachArchiveEntry`, `eachArchiveVolume`, and `eachArchiveError`. All operations are synchronous and use the same DuckDB lock as the CLI. See the example and [archive API documentation](docs/ARCHIVES.md#scripting-api).
+`Dedup` exposes filesystem, archive and image analysis APIs. Operations are synchronous and use the same exclusive database lock as the CLI. Streaming callbacks must not issue reentrant queries. See the examples and domain guides.
 
 ## Verification and development
 
@@ -80,12 +105,8 @@ python3 scripts/rollback-smoke.py
 python3 scripts/archive-smoke.py
 ```
 
-For the complete format matrix, install `zip` and `p7zip-full`, then run:
+For the full archive matrix install zip and p7zip-full and run `python3 scripts/archive-smoke.py --require-7z --upstream-rar5`. That optional RAR5 test downloads data-only fixtures from an immutable libarchive commit; ordinary operation never downloads anything.
 
-```bash
-python3 scripts/archive-smoke.py --require-7z --upstream-rar5
-```
+Image native verification additionally uses `/usr/bin/python3 scripts/image-preflight.py`, `/usr/bin/python3 scripts/image-smoke.py` and `/usr/bin/python3 scripts/image-extra-smoke.py`; fixture/runtime requirements are in docs/IMAGES.md. Tests compare source-image checksums and exercise actual process termination. Native support must be established by native tests, not mock-provider tests alone.
 
-That optional RAR5 test downloads data-only fixtures from an immutable libarchive commit; ordinary operation never downloads anything. CI runs this matrix on Ubuntu 24.04 / Java 21, including real SIGTERM/SIGKILL recovery, and publishes reports and distributions. A portable `testHarness` Gradle task can package sources and public test dependencies for offline reproduction.
-
-Read [AGENTS.md](AGENTS.md), [REQUIREMENTS.md](REQUIREMENTS.md), [filesystem architecture](docs/ARCHITECTURE.md), and [archive implementation contract](docs/ARCHIVE_SPEC.md) before changing invariants. The original LICENSE is preserved. No real-storage throughput benchmark is claimed.
+Read [AGENTS.md](AGENTS.md), [REQUIREMENTS.md](REQUIREMENTS.md), [filesystem architecture](docs/ARCHITECTURE.md), [archive contract](docs/ARCHIVE_SPEC.md), and [image guide](docs/IMAGES.md) before changing invariants. The original LICENSE is preserved. No real-storage throughput benchmark is claimed.
