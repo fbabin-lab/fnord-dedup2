@@ -11,22 +11,20 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
-/** Structured bridge to native QEMU/libguestfs, not a parser for human-oriented display output. */
+/** Structured bridge to native QEMU/libguestfs, not human-oriented display output. */
 class NativeImageProvider implements DiskImageProvider {
     private static final int MAX_LINE = 262144
 
     @Override String identity(Path work, ImageOptions options, StopToken stop) {
         Map result = execute(work, [mode:'version'], options, stop, { Map ignored -> }, true)
         if (result.event != 'version' || result.protocol != 1 || !result.provider) {
-            throw new IOException('Native image helper unavailable; install python3 and the qemu-utils and python3-guestfs runtime')
+            throw new IOException('Native image helper unavailable; install python3, qemu-utils and python3-guestfs')
         }
         'native-reader-v1/' + result.provider
     }
-
-    @Override Map inspect(Path work, Map configuration, ImageOptions options, StopToken stop, Closure event) {
-        execute(work, configuration + [mode:'inspect'], options, stop, event, false)
+    @Override Map inspect(Path work, Map config, ImageOptions options, StopToken stop, Closure event) {
+        execute(work, config + [mode:'inspect'], options, stop, event, false)
     }
-
     @Override Map probe(Path work, Map config, ImageOptions options, StopToken stop) {
         execute(work, config + [mode:'probe'], options, stop, { Map ignored -> }, false)
     }
@@ -42,13 +40,9 @@ class NativeImageProvider implements DiskImageProvider {
         Path guard=work.resolve('safe_exec.py')
         if (!Files.exists(guard)) getClass().getResourceAsStream('/image/safe_exec.py').withCloseable { Files.copy(it,guard) }
         List<String> argv = [options.python, '-I', script.toString(), ProcessHandle.current().pid().toString()]
-
         ProcessBuilder builder = new ProcessBuilder(argv).directory(work.toFile())
-        builder.environment().put('LC_ALL', 'C.UTF-8')
-        builder.environment().put('TZ', 'UTC')
-        // Do not inherit guestfs/QEMU configuration or environment-injected plugins.
         builder.environment().clear()
-        builder.environment().putAll([PATH:'/usr/bin:/bin', LC_ALL:'C.UTF-8', TZ:'UTC', HOME:work.toString(), LIBGUESTFS_BACKEND:'direct'])
+        builder.environment().putAll([PATH:'/usr/sbin:/usr/bin:/sbin:/bin', LC_ALL:'C.UTF-8', TZ:'UTC', HOME:work.toString(), LIBGUESTFS_BACKEND:'direct'])
         Process process = builder.start()
         ArrayBlockingQueue<Map> queue = new ArrayBlockingQueue<>(32)
         AtomicBoolean done = new AtomicBoolean(false)
@@ -64,8 +58,7 @@ class NativeImageProvider implements DiskImageProvider {
                         int b = buffer[i] & 255
                         if (b == 10) {
                             if (line.size() > 0) {
-                                Map parsed = (Map) new JsonSlurper().parseText(line.toString(StandardCharsets.UTF_8))
-                                queue.put(parsed)
+                                queue.put((Map)new JsonSlurper().parseText(line.toString(StandardCharsets.UTF_8)))
                                 line.reset()
                             }
                         } else {
@@ -95,9 +88,7 @@ class NativeImageProvider implements DiskImageProvider {
         Map summary = null
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(version ? 30L : options.timeoutSeconds)
         try {
-            process.outputStream.withCloseable { out ->
-                if (config != null) out.write(JsonOutput.toJson(config).getBytes(StandardCharsets.UTF_8))
-            }
+            process.outputStream.withCloseable { out -> out.write(JsonOutput.toJson(config).getBytes(StandardCharsets.UTF_8)) }
             while (!done.get() || !queue.empty || process.alive) {
                 stop.check()
                 if (System.nanoTime() > deadline) throw new IOException('Image extractor time limit reached')
@@ -108,7 +99,11 @@ class NativeImageProvider implements DiskImageProvider {
                         if (summary != null) throw new IOException('Duplicate image summary')
                         summary = row
                     } else if (row.event == 'fatal') {
-                        throw new ImageFailure((row.code ?: 'NATIVE_PROCESS_ERROR') as String, row.message as String, (row.category ?: 'OPERATIONAL') as String)
+                        String diagnostic
+                        synchronized (diagnostics) { diagnostic = diagnostics.toString(StandardCharsets.UTF_8).takeRight(8192) }
+                        throw new ImageFailure((row.code ?: 'NATIVE_PROCESS_ERROR') as String,
+                            (row.message ?: 'Native operation failed').toString() + (diagnostic ? '\n' + diagnostic : ''),
+                            (row.category ?: 'OPERATIONAL') as String)
                     } else {
                         if (summary != null) throw new IOException('Image event after summary')
                         event.call(row)

@@ -12,8 +12,6 @@ import fcntl
 import hashlib
 import json
 import os
-import pathlib
-import re
 import resource
 import signal
 import stat
@@ -51,8 +49,8 @@ def guarded(cfg, argv, label):
 
 def probe(cfg):
     # info opens only the primary node (BDRV_O_NO_BACKING). Supplying a nested
-    # backing object here is rejected by QEMU 8. The NBD open below uses the
-    # complete already-approved graph; probing must not implicitly open parents.
+    # backing object here is rejected by QEMU 8. Inspection uses the complete
+    # already-approved graph; probing must not implicitly open parents.
     primary = {k: v for k, v in cfg['graph'].items() if k != 'backing'}
     argv = ['/usr/bin/qemu-img', 'info', '--output=json', 'json:' + json.dumps(primary, separators=(',', ':'))]
     output = os.path.join(cfg['work'], 'probe-output')
@@ -123,7 +121,9 @@ def inspect(cfg):
     work = cfg['work']
     check_space(cfg)
     socket = os.path.join(work, 'disk.sock')
-    argv = ['/usr/bin/qemu-nbd', '--read-only', '--persistent', '--shared=1', '--socket', '/proc/' + str(os.getpid()) + '/cwd/disk.sock',
+    # Landlock forbids a restricted child from resolving its unrestricted
+    # parent's /proc/PID/cwd. Its own cwd alias is both short and permitted.
+    argv = ['/usr/bin/qemu-nbd', '--read-only', '--persistent', '--shared=1', '--socket', '/proc/self/cwd/disk.sock',
             'json:' + json.dumps(cfg['graph'], separators=(',', ':'))]
     nbd_log = open(os.path.join(work, 'nbd-errors'), 'wb')
     nbd = subprocess.Popen(guarded(cfg, argv, 'nbd'), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=nbd_log)
@@ -131,7 +131,6 @@ def inspect(cfg):
     errors = 0
     filesystems = 0
     entries = 0
-    operational = False
     def error(code, message, fs=None, entry=None, category='FILESYSTEM'):
         nonlocal errors
         errors += 1
@@ -148,6 +147,7 @@ def inspect(cfg):
         emit('progress', state='OPENING')
         g = guestfs.GuestFS(python_return_dict=True)
         g.set_backend('direct')
+        g.set_verbose(True)  # Bounded by the controller, including startup failures.
         g.set_backend_settings([] if cfg['acceleration'] == 'auto' else ['force_' + cfg['acceleration']])
         g.set_network(False)
         g.set_pgroup(False)
@@ -165,7 +165,7 @@ def inspect(cfg):
                 for p in g.part_list(device):
                     emit('partition', device=device, number=p['part_num'], start_bytes=p['part_start'], size_bytes=p['part_size'], table_type=table)
             except RuntimeError:
-                pass  # A filesystem image legitimately has no partition table.
+                pass  # A directly contained filesystem has no partition table.
         found = g.list_filesystems()
         if not found:
             error('NO_FILESYSTEM', 'No accessible filesystem was discovered')
@@ -275,7 +275,7 @@ def inspect(cfg):
                     for path in [queue, listing]:
                         with contextlib.suppress(FileNotFoundError):
                             os.unlink(path)
-        return dict(errors=errors, filesystems=filesystems, entries=entries, retryable=operational)
+        return dict(errors=errors, filesystems=filesystems, entries=entries, retryable=False)
     except Failure as e:
         error(e.code, str(e), category=e.category)
         return dict(errors=errors, filesystems=filesystems, entries=entries, retryable=e.category == 'OPERATIONAL')
@@ -376,6 +376,7 @@ def supervise(parent_pid):
                     break
                 time.sleep(.1)
         finally:
+            # Kill the entire group even if worker exited: no orphaned NBD/QEMU.
             with contextlib.suppress(ProcessLookupError):
                 os.killpg(process.pid, signal.SIGTERM)
             try:
