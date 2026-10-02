@@ -1,9 +1,6 @@
 #!/usr/bin/python3
 """Structured QEMU/libguestfs bridge. Never boots a source guest or owns JDBC.
-
-The outer supervisor retains the extraction lease until its worker/process group
-has been terminated, including after abrupt JVM death. QEMU image decoders run
-through safe_exec.py; libguestfs receives only an explicitly RAW, read-only NBD.
+The supervisor holds leases until its native process group has been retired.
 """
 import concurrent.futures
 import contextlib
@@ -48,9 +45,7 @@ def guarded(cfg, argv, label):
 
 
 def probe(cfg):
-    # info opens only the primary node (BDRV_O_NO_BACKING). Supplying a nested
-    # backing object here is rejected by QEMU 8. Inspection uses the complete
-    # already-approved graph; probing must not implicitly open parents.
+    # info deliberately opens only the primary node; NBD opens the approved graph.
     primary = {k: v for k, v in cfg['graph'].items() if k != 'backing'}
     argv = ['/usr/bin/qemu-img', 'info', '--output=json', 'json:' + json.dumps(primary, separators=(',', ':'))]
     output = os.path.join(cfg['work'], 'probe-output')
@@ -81,7 +76,6 @@ def probe(cfg):
 
 
 def nul_names(path):
-    """Bounded parsing of a native NUL-delimited listing, including non-UTF8 names."""
     pending = bytearray()
     with open(path, 'rb') as stream:
         while block := stream.read(65536):
@@ -98,7 +92,7 @@ def nul_names(path):
 
 
 def stream_hash(g, path, pool):
-    """Download to a pipe, not a temporary copy. One reused reader thread counts bytes."""
+    """Download to a pipe, not a temporary copy; count actual bytes."""
     r, w = os.pipe()
     def consume():
         digest = hashlib.sha256()
@@ -121,8 +115,6 @@ def inspect(cfg):
     work = cfg['work']
     check_space(cfg)
     socket = os.path.join(work, 'disk.sock')
-    # Landlock forbids a restricted child from resolving its unrestricted
-    # parent's /proc/PID/cwd. Its own cwd alias is both short and permitted.
     argv = ['/usr/bin/qemu-nbd', '--read-only', '--persistent', '--shared=1', '--socket', '/proc/self/cwd/disk.sock',
             'json:' + json.dumps(cfg['graph'], separators=(',', ':'))]
     nbd_log = open(os.path.join(work, 'nbd-errors'), 'wb')
@@ -147,17 +139,17 @@ def inspect(cfg):
         emit('progress', state='OPENING')
         g = guestfs.GuestFS(python_return_dict=True)
         g.set_backend('direct')
-        g.set_verbose(True)  # Bounded by the controller, including startup failures.
+        g.set_verbose(True)
         g.set_backend_settings([] if cfg['acceleration'] == 'auto' else ['force_' + cfg['acceleration']])
         g.set_network(False)
         g.set_pgroup(False)
         g.set_recovery_proc(True)
         g.set_memsize(cfg['appliance_memory_mib'])
         g.set_tmpdir('/proc/' + str(os.getpid()) + '/cwd')
-        g.set_sockdir('/proc/' + str(os.getpid()) + '/cwd')
         g.set_cachedir(cfg['appliance_cache'])
         g.add_drive_opts('', format='raw', readonly=True, protocol='nbd', server=['unix:/proc/' + str(os.getpid()) + '/cwd/disk.sock'])
         g.launch()
+        g.set_verbose(False)
         emit('progress', state='INSPECTING')
         for device in g.list_devices():
             try:
@@ -165,7 +157,7 @@ def inspect(cfg):
                 for p in g.part_list(device):
                     emit('partition', device=device, number=p['part_num'], start_bytes=p['part_start'], size_bytes=p['part_size'], table_type=table)
             except RuntimeError:
-                pass  # A directly contained filesystem has no partition table.
+                pass  # Direct filesystems legitimately have no partition table.
         found = g.list_filesystems()
         if not found:
             error('NO_FILESYSTEM', 'No accessible filesystem was discovered')
@@ -226,7 +218,7 @@ def inspect(cfg):
                                     size, sha = stream_hash(g, path, pool)
                                     after = g.lstatns(path)
                                     if not stat.S_ISREG(after['st_mode']) or any(after[k] != s[k] for k in ['st_size', 'st_mtime_sec', 'st_mtime_nsec']) or size != s['st_size']:
-                                        raise RuntimeError('Guest file size/type/time changed or read was incomplete')
+                                        raise RuntimeError('Guest file changed or read was incomplete')
                                     r.update(actual_size=size, sha256=sha, integrity='READ_OK')
                                 except RuntimeError as e:
                                     r['integrity'] = 'UNREADABLE'
@@ -262,7 +254,7 @@ def inspect(cfg):
                                     entry(path)
                                 os.unlink(listing)
                             if os.path.getsize(queue) > cfg['max_listing_bytes']:
-                                raise Failure('LISTING_LIMIT', 'Directory work queue exceeded metadata-spool limit', 'LIMIT')
+                                raise Failure('LISTING_LIMIT', 'Directory queue exceeded metadata-spool limit', 'LIMIT')
                     state = 'PARTIAL' if errors > initial_errors else 'COMPLETE'
                 except Failure as e:
                     error(e.code, str(e), fs, category=e.category)
@@ -376,7 +368,6 @@ def supervise(parent_pid):
                     break
                 time.sleep(.1)
         finally:
-            # Kill the entire group even if worker exited: no orphaned NBD/QEMU.
             with contextlib.suppress(ProcessLookupError):
                 os.killpg(process.pid, signal.SIGTERM)
             try:
