@@ -3,7 +3,9 @@ package fnord.dedup
 import fnord.dedup.hash.FileHasher
 import fnord.dedup.hash.HashValue
 import fnord.dedup.hash.Sha256Hasher
+import fnord.dedup.path.StoredPath
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Assumptions
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
@@ -267,6 +269,7 @@ class DedupTest {
     }
 
     @Test void doesNotFollowSymlinksOrHashFifos() {
+        Assumptions.assumeFalse(StoredPath.windowsHost(), 'POSIX special-file fixture')
         Path input = root(); Path outside = root('outside'); file(outside, 'secret')
         file(input, 'regular')
         Files.createSymbolicLink(input.resolve('loop'), input)
@@ -286,7 +289,7 @@ class DedupTest {
 
     @Test void handlesUnicodeNewlinesTabsQuotesAndLeadingDashesInNames() {
         Path input = root()
-        List<String> names = ['space name', 'été-東京', "line\nbreak", "tab\tname", "single'quote", 'double"quote', '-option', 'back\\slash']
+        List<String> names = StoredPath.windowsHost() ? ['space name', 'été-東京', "single'quote", '-option'] : ['space name', 'été-東京', "line\nbreak", "tab\tname", "single'quote", 'double"quote', '-option', 'back\\slash']
         names.each { file(input, it) }
         Dedup.open(work.resolve("db ' quoted.duckdb"), options()).withCloseable { Dedup d ->
             d.scan("scan's name", input)

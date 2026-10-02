@@ -4,8 +4,10 @@ import fnord.dedup.cross.*
 import fnord.dedup.hash.*
 import fnord.dedup.cli.Main
 import fnord.dedup.merge.DatabaseMerger
+import fnord.dedup.path.StoredPath
 import groovy.json.JsonSlurper
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Assumptions
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.*
 import java.nio.file.attribute.FileTime
@@ -262,6 +264,7 @@ class CrossScanTest {
     }
 
     @Test void replacedRegularFileSymlinkIsNeverFollowed() {
+        Assumptions.assumeFalse(StoredPath.windowsHost(), 'POSIX symlink fixture')
         Dedup.open(database(),tuning()).withCloseable { d ->
             Path a=seed(d,'A',['file':'same','was-file':'same']);seed(d,'B',['file':'same'])
             Files.delete(a.resolve('was-file'));Files.createSymbolicLink(a.resolve('was-file'),a.resolve('file'))
@@ -272,6 +275,7 @@ class CrossScanTest {
     }
 
     @Test void linksAndFifosInInventoryAreNotHashCandidates() {
+        Assumptions.assumeFalse(StoredPath.windowsHost(), 'POSIX FIFO fixture')
         Dedup.open(database(),tuning()).withCloseable { d ->
             Path a=Files.createDirectory(work.resolve('special-A'))
             Path b=Files.createDirectory(work.resolve('special-B'))
@@ -342,13 +346,13 @@ class CrossScanTest {
     @Test void samePhysicalPathAndUnusualNamesRetainIndependentObservations() {
         Dedup.open(database(),tuning()).withCloseable { d ->
             String a='Scan, A \"é\"',b='scan, A \"é\"'
-            Path root=seed(d,a,['a\n\t\"é':'same','-leading':'same'])
+            Map<String,String> files = StoredPath.windowsHost() ? ['a é':'same','-leading':'same'] : ['a\n\t"é':'same','-leading':'same']
+            Path root=seed(d,a,files)
             d.scan(b,root,new StopToken(),true)
             def r=compare(d,[a,b])
             assert r.rows.size()==4 && r.rows*.path.toSet().size()==2
             assert r.rows*.scan_name.toSet()==[a,b].toSet()
-            assert r.rows*.filename.toSet()==['a\n\t\"é','-leading'].toSet()
-        }
+            assert r.rows*.filename.toSet()==files.keySet()
     }
 
     @Test void archiveAndImagePayloadsAreNotExtractedByComparison() {

@@ -1,6 +1,7 @@
 package fnord.dedup
 
 import fnord.dedup.cli.Main
+import fnord.dedup.path.StoredPath
 import groovy.json.JsonSlurper
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -19,7 +20,8 @@ class CliTest {
 
     @Test void cliProvidesTwoPassCommandsAndJsonLines() {
         Path input = Files.createDirectory(work.resolve('input'))
-        Files.writeString(input.resolve("first\nname"), 'same')
+        String unusual = StoredPath.windowsHost() ? 'first name' : "first\nname"
+        Files.writeString(input.resolve(unusual), 'same')
         Files.writeString(input.resolve('second'), 'same')
         Map scan = runCli(['scan', '--name', 'cli', '--root', input.toString(), '--discover-only', '--quiet'])
         assert scan.code == 0 : scan.err
@@ -31,7 +33,7 @@ class CliTest {
         assert report.code == 0 : report.err
         List<Map> lines = report.out.readLines().collect { new JsonSlurper().parseText(it) as Map }
         assert lines.size() == 2
-        assert lines*.filename.toSet() == ["first\nname", 'second'].toSet()
+        assert lines*.filename.toSet() == [unusual, 'second'].toSet()
         assert new JsonSlurper().parseText(runCli(['list']).out)*.name == ['cli']
         assert new JsonSlurper().parseText(runCli(['status','--name','cli']).out).files == 2
         assert runCli(['errors','--name','cli']).out.empty
