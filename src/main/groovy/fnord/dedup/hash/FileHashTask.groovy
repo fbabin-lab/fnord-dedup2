@@ -1,21 +1,27 @@
 package fnord.dedup.hash
 
 import fnord.dedup.StopToken
+import fnord.dedup.path.StoredPath
+import fnord.dedup.path.ForeignStoredPathException
 import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.CancellationException
 
 /** Shared worker-only observation validation. No JDBC, lifecycle changes or console output. */
 final class FileHashTask {
+    static Map calculate(Map candidate, String storedRoot, FileHasher hasher, StopToken stop, int bufferBytes) {
+        try {
+            return calculate(candidate, StoredPath.nativeRoot(storedRoot), hasher, stop, bufferBytes)
+        } catch (ForeignStoredPathException e) {
+            return [entry_id:candidate.entry_id, relative_path:candidate.relative_path, code:'FOREIGN_ROOT', error:e.message]
+        }
+    }
+
     static Map calculate(Map candidate, Path root, FileHasher hasher, StopToken stop, int bufferBytes) {
         Map result = [entry_id:candidate.entry_id, relative_path:candidate.relative_path]
         try {
             stop.check()
-            Path relative = Path.of(candidate.relative_path as String)
-            Path path = root.resolve(relative).normalize()
-            if (relative.isAbsolute() || !path.startsWith(root.normalize())) {
-                throw new IllegalArgumentException('Inventory path escapes its scan root')
-            }
+            Path path = StoredPath.resolve(root, candidate.relative_path as String)
             verify(path, candidate)
             HashValue value = hasher.hash(path, stop, bufferBytes)
             stop.check()

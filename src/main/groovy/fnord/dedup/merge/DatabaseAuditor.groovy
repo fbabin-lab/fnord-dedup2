@@ -117,7 +117,7 @@ class DatabaseAuditor {
     private void base() {
         unique('scans','scan_id'); unique('scans','name')
         states('scans','phase',"'DISCOVERING','READY','HASHING','COMPLETE','COMPLETE_WITH_ERRORS'")
-        none('Invalid scan identity, name, root or algorithm', "SELECT 1 FROM ${p}scans WHERE scan_id<=0 OR length(trim(name))=0 OR length(name)>200 OR algorithm<>'SHA-256' OR NOT starts_with(root,'/') OR next_entry_id<2")
+        none('Invalid scan identity, name, root or algorithm', "SELECT 1 FROM ${p}scans WHERE scan_id<=0 OR length(trim(name))=0 OR length(name)>200 OR algorithm<>'SHA-256' OR NOT regexp_full_match(root,'(/|/[^/].*|//[^/]+/[^/]+(/.*)?|[A-Za-z]:/.*)') OR next_entry_id<2")
         for (String table : BASE - ['scans']) orphan(table,'scan_id','scans')
         unique('entries','scan_id,entry_id'); unique('entries','scan_id,relative_path')
         unique('directories','scan_id,entry_id'); unique('hashes','scan_id,entry_id')

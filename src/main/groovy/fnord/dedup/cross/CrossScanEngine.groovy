@@ -4,7 +4,7 @@ import fnord.dedup.Dedup
 import fnord.dedup.StopToken
 import fnord.dedup.hash.FileHashTask
 import fnord.dedup.hash.FileHasher
-import java.nio.file.Path
+import fnord.dedup.path.StoredPath
 import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -116,7 +116,7 @@ final class CrossScanEngine {
                                 summary.hash_failures++
                                 Map error = [stage:'cross-scan',event:'hash_error',scan_id:result.scan_id,
                                     scan_name:result.scan_name,entry_id:result.entry_id,relative_path:result.relative_path,
-                                    path:Path.of(result.scan_root as String).resolve(result.relative_path as String).toString(),
+                                    path:StoredPath.join(result.scan_root as String,result.relative_path as String),
                                     code:result.code,message:(result.error as String).take(4096)]
                                 if (summary.error_samples.size() < options.maxErrorSamples) summary.error_samples.add(new LinkedHashMap(error))
                                 options.onError.call(error)
@@ -156,7 +156,7 @@ final class CrossScanEngine {
     private void submit(CompletionService<Map> completion, Map candidate) {
         // Separate method binding prevents closure loop-variable capture.
         completion.submit({ ->
-            Map result = FileHashTask.calculate(candidate, Path.of(candidate.scan_root as String), hasher, stop, engine.options.bufferBytes)
+            Map result = FileHashTask.calculate(candidate, candidate.scan_root as String, hasher, stop, engine.options.bufferBytes)
             result.scan_id = candidate.scan_id
             result.scan_name = candidate.scan_name
             result.scan_root = candidate.scan_root

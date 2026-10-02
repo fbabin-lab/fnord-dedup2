@@ -4,7 +4,6 @@ import fnord.dedup.ScanOptions
 import fnord.dedup.StopToken
 import fnord.dedup.store.BulkWriter
 import fnord.dedup.store.DuckStore
-import java.nio.file.Path
 import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -16,7 +15,7 @@ final class HashEngine {
         if (hasher.algorithm() != 'SHA-256') throw new IllegalArgumentException('This schema accepts SHA-256 providers only')
         if (stop.cancelled) return
         long scanId = scan.scan_id as long
-        Path root = Path.of(scan.root as String)
+        String storedRoot = scan.root as String
         store.prepareCandidates(scanId, rehash)
         AtomicInteger threadNumber = new AtomicInteger()
         ExecutorService pool = Executors.newFixedThreadPool(options.workers, { Runnable runnable ->
@@ -36,7 +35,7 @@ final class HashEngine {
                 int inFlight = 0
                 while (!stop.cancelled && (iterator.hasNext() || inFlight > 0)) {
                     while (!stop.cancelled && iterator.hasNext() && inFlight < options.workers * 2) {
-                        submit(completion, iterator.next(), root, hasher, stop, options.bufferBytes)
+                        submit(completion, iterator.next(), storedRoot, hasher, stop, options.bufferBytes)
                         inFlight++
                     }
                     Future<Map> ready = completion.poll(100, TimeUnit.MILLISECONDS)
@@ -70,10 +69,10 @@ final class HashEngine {
         }
     }
 
-    private static void submit(CompletionService<Map> completion, Map candidate, Path root,
+    private static void submit(CompletionService<Map> completion, Map candidate, String storedRoot,
                                FileHasher hasher, StopToken stop, int bufferBytes) {
         // A method parameter gives every submitted closure its own candidate binding.
-        completion.submit({ -> FileHashTask.calculate(candidate, root, hasher, stop, bufferBytes) } as Callable<Map>)
+        completion.submit({ -> FileHashTask.calculate(candidate, storedRoot, hasher, stop, bufferBytes) } as Callable<Map>)
     }
 
 }

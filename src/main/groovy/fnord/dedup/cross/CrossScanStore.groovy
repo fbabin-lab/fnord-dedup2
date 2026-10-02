@@ -3,7 +3,7 @@ package fnord.dedup.cross
 import fnord.dedup.StopToken
 import fnord.dedup.store.DuckStore
 import org.duckdb.DuckDBAppender
-import java.nio.file.Path
+import fnord.dedup.path.StoredPath
 
 /** Session-only selection/candidates/groups; the only persistent writes are completed hashes. */
 final class CrossScanStore implements AutoCloseable {
@@ -133,7 +133,7 @@ final class CrossScanStore implements AutoCloseable {
             JOIN ${table('groups')} g ON g.size=f.size AND g.sha256=h.sha256
             ORDER BY f.size DESC,h.sha256,f.scan_ordinal,f.relative_path,f.entry_id""", new Object[0]) { Map row ->
             stop.check()
-            row.path = Path.of(row.scan_root as String).resolve(row.relative_path as String).toString()
+            row.path = StoredPath.join(row.scan_root as String, row.relative_path as String)
             row.group_id = row.size.toString() + ':' + row.sha256
             consumer.call(row)
         }

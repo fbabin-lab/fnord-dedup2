@@ -1,6 +1,7 @@
 package fnord.dedup.store
 
 import fnord.dedup.ScanOptions
+import fnord.dedup.path.StoredPath
 import org.duckdb.DuckDBConnection
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -107,6 +108,7 @@ class DuckStore implements AutoCloseable {
     }
 
     Map createScan(String name, Path requestedRoot) {
+        StoredPath.validateRequestedRoot(requestedRoot)
         if (!name || !name.trim() || name.length() > 200) throw new IllegalArgumentException('Scan name must contain 1..200 characters')
         Path root = requestedRoot.toRealPath()
         if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) throw new IllegalArgumentException('Scan root must be a directory')
@@ -117,7 +119,7 @@ class DuckStore implements AutoCloseable {
                 throw new IllegalArgumentException("Scan '${name}' already exists; use resume or a new name")
             }
             long id = ((Number) rows('SELECT coalesce(max(scan_id),0)+1 AS id FROM scans')[0].id).longValue()
-            exec("INSERT INTO scans(scan_id,name,root,phase,next_entry_id) VALUES (?,?,?,'DISCOVERING',2)", id, name, root.toString())
+            exec("INSERT INTO scans(scan_id,name,root,phase,next_entry_id) VALUES (?,?,?,'DISCOVERING',2)", id, name, StoredPath.storeAbsolute(root))
             def modified = attributes.lastModifiedTime().toInstant()
             exec('INSERT INTO entries VALUES (?,?,?,?,?,?,?,?,?)', id, 1L, 0L, '', root.fileName?.toString() ?: '/', 'DIRECTORY', attributes.size(), modified.epochSecond, modified.nano)
             exec('INSERT INTO directories VALUES (?,?,?,?,false)', id, 1L, 0L, '')
@@ -214,7 +216,7 @@ class DuckStore implements AutoCloseable {
             ) SELECT m.relative_path,m.filename,m.size,m.modified_sec,m.modified_nano,m.sha256,g.copies
               FROM matched m JOIN grouped g USING (size,sha256)
               ORDER BY m.size DESC,m.sha256,m.relative_path''', [id] as Object[]) { Map row ->
-            row.path = Path.of(scan.root as String).resolve(row.relative_path as String).toString()
+            row.path = StoredPath.join(scan.root as String, row.relative_path as String)
             row.partial = partial
             consumer.call(row)
         }

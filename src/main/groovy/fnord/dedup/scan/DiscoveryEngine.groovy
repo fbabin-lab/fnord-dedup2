@@ -4,6 +4,7 @@ import fnord.dedup.ScanOptions
 import fnord.dedup.StopToken
 import fnord.dedup.store.BulkWriter
 import fnord.dedup.store.DuckStore
+import fnord.dedup.path.StoredPath
 import groovy.transform.CompileStatic
 import java.nio.file.DirectoryIteratorException
 import java.nio.file.DirectoryStream
@@ -19,7 +20,7 @@ final class DiscoveryEngine {
         if (scan.get('phase') != 'DISCOVERING') return
         long scanId = ((Number) scan.get('scan_id')).longValue()
         store.recoverDiscovery(scanId)
-        Path root = Path.of((String) scan.get('root'))
+        Path root = StoredPath.nativeRoot((String) scan.get('root'))
         long nextId = ((Number) scan.get('next_entry_id')).longValue()
         BulkWriter writer = new BulkWriter(store, scanId, 'discovery', nextId, options, progress)
         Long active = null
@@ -32,7 +33,7 @@ final class DiscoveryEngine {
                     long directoryId = ((Number) task.get('entry_id')).longValue()
                     active = directoryId
                     String relative = (String) task.get('relative_path')
-                    Path directory = root.resolve(relative)
+                    Path directory = StoredPath.resolve(root, relative)
                     try {
                         BasicFileAttributes current = Files.readAttributes(directory, BasicFileAttributes, LinkOption.NOFOLLOW_LINKS)
                         if (!current.isDirectory()) throw new IOException('Directory disappeared or changed type since discovery')
@@ -41,7 +42,7 @@ final class DiscoveryEngine {
                             while (!stop.cancelled && iterator.hasNext()) {
                                 Path child = iterator.next()
                                 if (store.excluded(child)) continue
-                                String childRelative = root.relativize(child).toString()
+                                String childRelative = StoredPath.storeRelative(root.relativize(child))
                                 // Java String paths cannot losslessly represent arbitrary non-UTF-8 bytes.
                                 if (!Path.of(child.toString()).equals(child)) {
                                     writer.error('DISCOVERY', childRelative, 'Filename is not representable as UTF-8; entry skipped')
