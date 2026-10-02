@@ -1,6 +1,6 @@
 # Version 0.1 requirements
 
-The Linux application is implemented in Groovy with equivalent CLI and synchronous scripting entry points. One embedded DuckDB database stores multiple independently named filesystem inventories. No server is required.
+The application is implemented in Groovy and its core filesystem functionality runs natively on Linux and Windows with equivalent CLI and synchronous scripting entry points. One embedded DuckDB database stores multiple independently named filesystem inventories. No server is required.
 
 ## Filesystem phases
 
@@ -21,6 +21,14 @@ Reuse completed normal hashes without opening their source files. Hash only miss
 Groups require equal size and SHA-256 across at least two distinct selected scans. Report every matching occurrence with scan/path provenance; do not include same-scan-only groups. Missing, changed or unreadable candidates remain unresolved. Continue other candidates, stream errors to the caller, report partial coverage and reuse committed hashes on rerun after interruption. Existing scan errors are warnings, never silently cleared. Results are historical observations, not physical-copy or reclaimable-space estimates.
 
 Stream JSONL occurrences on stdout and a final JSON coverage summary plus errors on stderr; quiet mode suppresses only progress. Keep ordinary per-scan behavior unchanged. Cross-scan operations do not extract archives or inspect image guest files. See docs/CROSS_SCAN.md and its recovery, validation, offline-root and merged-database tests.
+
+## Core platform portability
+
+Filesystem discovery, ordinary hashing, duplicate reporting, cross-scan verification and whole-database merge must run with Java 21 on Linux and Windows. Persisted scan roots and relative paths use a portable forward-slash representation. Windows drive roots use C:/..., UNC paths use //server/share/..., and POSIX roots use /.... Native Path objects are used only for local filesystem I/O; portable stored paths are used for database identity and reporting.
+
+Path serialization must operate on path components, never by globally replacing backslashes: a backslash can be a legitimate Linux filename character. A database copied between platforms remains queryable. A foreign-platform root is never reinterpreted as a local relative path; saved hashes remain usable, while a missing hash that requires unavailable foreign source bytes remains unresolved.
+
+Windows core runtime must not require WSL, Cygwin, Git Bash, Python or a separate Groovy installation. Archive and disk-image analysis remain Linux-only and are excluded from Windows compatibility requirements.
 
 ## Optional archive phase
 

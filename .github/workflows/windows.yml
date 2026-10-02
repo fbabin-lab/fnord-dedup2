@@ -1,0 +1,47 @@
+name: windows-core
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build Windows core and distribution
+        shell: pwsh
+        run: .\gradlew.bat --no-daemon windowsCoreTest installDist distZip
+      - name: Verify Windows launchers
+        shell: pwsh
+        run: |
+          .\build\install\fnord-dedup2\bin\fnord-dedup2.bat --help
+          .\bin\fnord-dedup2.bat --help
+          .\build\install\fnord-dedup2\bin\fnord-dedup2-groovy.bat -e "assert GroovySystem.version"
+      - name: Windows filesystem, cross-scan and merge smoke
+        shell: pwsh
+        run: .\scripts\windows-core-smoke.ps1
+      - name: Upload Windows test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-reports
+          path: build/reports/tests/windowsCoreTest/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload Windows distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: fnord-dedup2-windows
+          path: build/distributions/*.zip
+          retention-days: 7

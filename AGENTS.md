@@ -17,6 +17,16 @@ Critical filesystem invariants:
 9. Handle unusual UTF-8 filenames safely; never parse filesystem names using lines/whitespace. Keep symlinks and special files out of hashing. Keep DB/WAL/lock/spill paths out of inventory.
 10. Version schemas/providers explicitly. Never mix digest algorithms or change compatibility implicitly.
 
+Windows/core portability invariants:
+
+- Core filesystem, hashing, duplicate/cross-scan, merge, CLI and scripting changes must preserve Linux and Windows behavior. Archive/image support remains Linux-only unless explicitly requested.
+- Never persist Path.toString() for scan roots or relative filesystem paths. Use the stored-path codec.
+- Persisted filesystem paths use / separators. Windows drive roots are C:/...; UNC roots are //server/share/....
+- Never globally replace backslash with slash in arbitrary stored names: backslash is a legal Linux filename character. Serialize native path components instead.
+- Use native java.nio.file.Path for local I/O and portable strings for database/report identities. Never feed a foreign-platform stored root to the host path provider.
+- Database merge copies stored path strings unchanged. Existing hashes from a foreign-platform scan remain valid observations even when the source tree is offline.
+- Windows build/runtime must not depend on Unix shell utilities. Keep the checksum-pinned gradlew.bat bootstrap and native .bat launchers working.
+
 Archive invariants:
 
 - Only one native extractor is active. Recurse depth-first through the same processor; retain parent payloads until child work finishes. Temporary data is outside the source tree.

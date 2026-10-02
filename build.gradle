@@ -31,6 +31,24 @@ test {
     maxHeapSize = '512m'
     testLogging { events 'passed', 'skipped', 'failed'; exceptionFormat = 'full' }
 }
+tasks.register('windowsCoreTest', Test) {
+    dependsOn testClasses
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    maxParallelForks = 1
+    maxHeapSize = '512m'
+    filter {
+        includeTestsMatching 'fnord.dedup.StoredPathTest'
+        includeTestsMatching 'fnord.dedup.WindowsCoreTest'
+        includeTestsMatching 'fnord.dedup.DedupTest'
+        includeTestsMatching 'fnord.dedup.CrossScanTest'
+        includeTestsMatching 'fnord.dedup.CliTest'
+        includeTestsMatching 'fnord.dedup.BulkWriterTest'
+    }
+    testLogging { events 'passed', 'skipped', 'failed'; exceptionFormat = 'full' }
+}
+
 tasks.withType(AbstractArchiveTask).configureEach {
     preserveFileTimestamps = false
     reproducibleFileOrder = true

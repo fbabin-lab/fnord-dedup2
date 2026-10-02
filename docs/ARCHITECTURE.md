@@ -56,6 +56,16 @@ Adding BLAKE3 or another algorithm is not just swapping a function: persist algo
 
 Other useful future improvements include a measured parallel discovery producer, a raw-byte Linux pathname representation, optional full byte-comparison verification, and an explicit metadata refresh workflow. These are not implemented features. Preserve bounded memory, single-owner writes, and atomic checkpoint invariants while extending.
 
+## Portable filesystem paths
+
+The persistence model distinguishes native filesystem paths from stored path identities. java.nio.file.Path is used for actual local I/O. scans.root, inventory relative paths, error relative paths and report paths use the portable stored-path codec and / separators on every host.
+
+Canonical stored root forms are /data/... for POSIX, C:/Data/... for Windows drives, and //server/share/... for Windows UNC paths. Relative paths contain only portable / separators. Serialization joins native path components; it never globally substitutes backslashes, because Linux permits a literal backslash inside one filename component.
+
+Before local I/O, the codec classifies the stored root and rejects roots belonging to another platform. This prevents a Windows root such as C:/Data from becoming a relative Linux path, and prevents a POSIX root from being silently mapped onto a Windows drive. Reporting and database merge do not require host interpretation of stored roots, so databases remain useful after moving between platforms when hashes are already present.
+
+Runtime database, WAL, lock and DuckDB temporary paths remain native host paths and are not part of this stored-path contract. Archive and image processing remain Linux-only.
+
 ## References
 
 - DuckDB JDBC bulk appender: https://duckdb.org/docs/current/clients/java/data_import

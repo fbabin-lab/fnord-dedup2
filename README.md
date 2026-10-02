@@ -1,8 +1,22 @@
 # fnord-dedup2
 
-Linux duplicate-file analysis in **Groovy**, with a **CLI**, a **synchronous scripting API**, and an embedded **DuckDB** database containing multiple named scans. No server or separate Groovy installation is required.
+Duplicate-file analysis in **Groovy**, with a **CLI**, a **synchronous scripting API**, and an embedded **DuckDB** database containing multiple named scans. No server or separate Groovy installation is required.
 
 The application never deletes, moves, hard-links, or rewrites source files. Container analysis writes only disposable temporary data.
+
+## Platforms
+
+Core filesystem discovery, SHA-256 hashing, duplicate reports, cross-scan verification, database merge, CLI and Groovy scripting are supported on **Linux and Windows** with Java 21. Paths persisted in DuckDB use forward slashes on both platforms: C:/Data, //server/share and /data. Native filesystem I/O still uses java.nio.file.Path.
+
+Archive analysis and disk/VM-image analysis remain **Linux-only**. Windows core support does not require Python, libarchive, QEMU, libguestfs, WSL, Cygwin or Git Bash.
+
+Windows PowerShell:
+
+    .\gradlew.bat windowsCoreTest installDist
+    .\bin\fnord-dedup2.bat --help
+    .\bin\fnord-dedup2.bat --db "$HOME\scans.duckdb" scan --name "Photos" --root "D:\Photos"
+
+See [the Windows guide](docs/WINDOWS.md) for drive/UNC paths, foreign-platform databases, locked files and limitations.
 
 ## Build
 
