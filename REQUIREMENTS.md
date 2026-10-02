@@ -12,6 +12,16 @@ Use bounded appender batches, bounded application memory/concurrency, reusable b
 
 Minimum commands: scan, resume, hash, list, status, duplicates, errors. Status/list/work summaries are JSON; large reports stream JSON Lines. Incomplete filesystem reports require explicit opt-in. Validate roots, names, paths and resource limits.
 
+## Cross-scan verification
+
+`cross-duplicates` and the equivalent synchronous Groovy API require an explicit list of at least two distinct existing scan names. Reject repeated/unknown names, incomplete discovery/checkpoints and incompatible algorithms before hashing. Only selected regular filesystem entries participate. Compute candidate sizes once using occurrence in at least two distinct selected scans, not merely repeated size within one scan.
+
+Reuse completed normal hashes without opening their source files. Hash only missing candidates using shared before/after size, timestamp and regular-file checks, streaming SHA-256 and bounded workers. Persist only complete new digests in the normal hashes table, in bounded transactions. Do not modify scan phases, timestamps, inventory, scan errors or archive/image data. Use session-only candidate/group tables; no persistent cross-scan task state or schema change.
+
+Groups require equal size and SHA-256 across at least two distinct selected scans. Report every matching occurrence with scan/path provenance; do not include same-scan-only groups. Missing, changed or unreadable candidates remain unresolved. Continue other candidates, stream errors to the caller, report partial coverage and reuse committed hashes on rerun after interruption. Existing scan errors are warnings, never silently cleared. Results are historical observations, not physical-copy or reclaimable-space estimates.
+
+Stream JSONL occurrences on stdout and a final JSON coverage summary plus errors on stderr; quiet mode suppresses only progress. Keep ordinary per-scan behavior unchanged. Cross-scan operations do not extract archives or inspect image guest files. See docs/CROSS_SCAN.md and its recovery, validation, offline-root and merged-database tests.
+
 ## Optional archive phase
 
 After discovery, explicitly requested archive analysis inspects candidates including unique-size files. A replaceable native provider extracts one archive at a time into private temporary storage. Persist logical member paths, filenames, types, declared/actual sizes, available timestamps and streaming SHA-256 of readable regular files. Source files remain read-only; extracted payloads are disposable.
@@ -48,6 +58,6 @@ CLI/API must expose images, image-status, image-list, image-errors and result-ba
 
 Verify real persistence/reopening, scan isolation, changed files, unusual names, non-regular files, batched publication, corruption/partial results, canonical identity, limits and cleanup. Use actual SIGTERM/SIGKILL tests on packaged launchers. Native format/platform claims require native fixtures, not mock-provider success. Source-image hashes before/after inspection must match. Test writes stay within generated fixtures.
 
-Non-goals: destructive deduplication, physical-space/hardlink accounting, a web interface, multiprocess DuckDB writers, atomic source snapshots, continuous watching, metadata refresh, ordinary cross-scan duplicate grouping, historical-result garbage collection, archive repair/recompression/password management or persistent extracted payloads.
+Non-goals: destructive deduplication, physical-space/hardlink accounting, a web interface, multiprocess DuckDB writers, atomic source snapshots, continuous watching, metadata refresh, automatic all-scan or cross-domain duplicate grouping, historical-result garbage collection, archive repair/recompression/password management or persistent extracted payloads.
 
 Image non-goals for this phase: nested archive/image dispatch, image-to-image recursion, deleted-file carving, guest execution/repair, historical snapshot traversal, OS/application inventory, multi-disk VM/RAID assembly, decryption credentials, permanent conversion and DMG fallback conversion. Combined filesystem/archive/image-member duplicate reports are a separate extension. Do not expose flags that pretend to implement absent capabilities.

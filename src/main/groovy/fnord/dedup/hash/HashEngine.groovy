@@ -4,10 +4,7 @@ import fnord.dedup.ScanOptions
 import fnord.dedup.StopToken
 import fnord.dedup.store.BulkWriter
 import fnord.dedup.store.DuckStore
-import java.nio.file.Files
-import java.nio.file.LinkOption
 import java.nio.file.Path
-import java.nio.file.attribute.BasicFileAttributes
 import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -76,38 +73,7 @@ final class HashEngine {
     private static void submit(CompletionService<Map> completion, Map candidate, Path root,
                                FileHasher hasher, StopToken stop, int bufferBytes) {
         // A method parameter gives every submitted closure its own candidate binding.
-        completion.submit({ -> calculate(candidate, root, hasher, stop, bufferBytes) } as Callable<Map>)
+        completion.submit({ -> FileHashTask.calculate(candidate, root, hasher, stop, bufferBytes) } as Callable<Map>)
     }
 
-    private static Map calculate(Map candidate, Path root, FileHasher hasher, StopToken stop, int bufferBytes) {
-        Map result = [entry_id: candidate.entry_id, relative_path: candidate.relative_path]
-        try {
-            stop.check()
-            Path path = root.resolve(candidate.relative_path as String)
-            verify(path, candidate)
-            HashValue value = hasher.hash(path, stop, bufferBytes)
-            stop.check()
-            verify(path, candidate)
-            if (value == null || value.bytesRead != (candidate.size as long)) {
-                throw new IOException('File length changed while hashing')
-            }
-            if (!(value.hex ==~ /[0-9a-f]{64}/)) throw new IllegalArgumentException('Hasher returned an invalid SHA-256 digest')
-            result.sha256 = value.hex
-        } catch (CancellationException ignored) {
-            result.cancelled = true
-        } catch (IOException | SecurityException e) {
-            if (stop.cancelled) result.cancelled = true
-            else result.error = e.toString()
-        }
-        result
-    }
-
-    private static void verify(Path path, Map candidate) {
-        BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes, LinkOption.NOFOLLOW_LINKS)
-        def modified = attributes.lastModifiedTime().toInstant()
-        if (!attributes.isRegularFile() || attributes.size() != (candidate.size as long) ||
-            modified.epochSecond != (candidate.modified_sec as long) || modified.nano != (candidate.modified_nano as int)) {
-            throw new IOException('File changed since discovery; excluded from duplicate results. Create a new scan to refresh metadata.')
-        }
-    }
 }

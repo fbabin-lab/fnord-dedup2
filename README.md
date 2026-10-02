@@ -34,6 +34,22 @@ Use `scan --discover-only` then `hash --name ...` to separate the phases. Stop w
 
 See [the filesystem guide](docs/FILESYSTEM.md) for commands, tuning, recovery and correctness boundaries.
 
+## Cross-scan duplicates
+
+Explicitly select at least two distinct scans whose discovery has finished:
+
+```bash
+./bin/fnord-dedup2 --db "$DB" cross-duplicates \
+  --scan "Laptop 2026" --scan "NAS 2026" --scan "USB Backup" \
+  --workers 2 --format jsonl > cross-duplicates.jsonl 2> cross-verification.log
+```
+
+Only regular files whose size appears in two or more selected scans become candidates. Saved hashes are reused without reopening their files; only missing candidate hashes are calculated. Matching size and SHA-256 must span at least two selected scans to be reported. Unselected scans and same-scan-only groups are excluded.
+
+New hashes persist in the normal hashes table. Scan phases, scan timestamps, inventories and scan errors are unchanged. Repeat the same command after interruption; completed hashes are reused. Unknown/repeated names and unfinished discovery are refused before hashing. Missing/changed files remain unresolved, not proven nonduplicates.
+
+Results stream on stdout; the final JSON summary and errors go to stderr even with `--quiet`. The Groovy API is `d.crossDuplicates(['A','B']) { row -> ... }`; an example is in `examples/cross-duplicates.groovy`. See [the cross-scan guide](docs/CROSS_SCAN.md) for coverage, exit codes, cancellation and offline/historical semantics. This compares filesystem entries, not archive members or image guest files, and does not estimate reclaimable space.
+
 ## Optional archive phase
 
 Archive analysis starts **only when explicitly requested**, after filesystem discovery. Ordinary hashing need not have run.
@@ -92,9 +108,10 @@ The distribution includes a Groovy runner:
 ```bash
 build/install/fnord-dedup2/bin/fnord-dedup2-groovy examples/archives.groovy "$DB" "archive-01" "$HOME/fnord-archive-temp"
 build/install/fnord-dedup2/bin/fnord-dedup2-groovy examples/images.groovy "$DB" "archive-01" "$HOME/fnord-image-temp"
+build/install/fnord-dedup2/bin/fnord-dedup2-groovy examples/cross-duplicates.groovy "$DB" "Laptop 2026" "NAS 2026"
 ```
 
-`Dedup` exposes filesystem, archive and image analysis APIs. Operations are synchronous and use the same exclusive database lock as the CLI. Streaming callbacks must not issue reentrant queries. See the examples and domain guides.
+`Dedup` exposes filesystem, cross-scan, archive and image analysis APIs. Operations are synchronous and use the same exclusive database lock as the CLI. Streaming callbacks must not issue reentrant queries. See the examples and domain guides.
 
 ## Database merge
 
@@ -117,10 +134,11 @@ python3 scripts/process-smoke.py
 python3 scripts/rollback-smoke.py
 python3 scripts/archive-smoke.py
 python3 scripts/database-merge-smoke.py
+python3 scripts/cross-scan-smoke.py
 ```
 
 For the full archive matrix install zip and p7zip-full and run `python3 scripts/archive-smoke.py --require-7z --upstream-rar5`. That optional RAR5 test downloads data-only fixtures from an immutable libarchive commit; ordinary operation never downloads anything.
 
 Image native verification additionally uses `/usr/bin/python3 scripts/image-preflight.py`, `/usr/bin/python3 scripts/image-smoke.py` and `/usr/bin/python3 scripts/image-extra-smoke.py`; fixture/runtime requirements are in docs/IMAGES.md. Tests compare source-image checksums and exercise actual process termination. Native support must be established by native tests, not mock-provider tests alone.
 
-Read [AGENTS.md](AGENTS.md), [REQUIREMENTS.md](REQUIREMENTS.md), [filesystem architecture](docs/ARCHITECTURE.md), [archive contract](docs/ARCHIVE_SPEC.md), and [image guide](docs/IMAGES.md) before changing invariants. The original LICENSE is preserved. No real-storage throughput benchmark is claimed.
+Read [AGENTS.md](AGENTS.md), [REQUIREMENTS.md](REQUIREMENTS.md), [filesystem architecture](docs/ARCHITECTURE.md), [cross-scan contract](docs/CROSS_SCAN.md), [archive contract](docs/ARCHIVE_SPEC.md), and [image guide](docs/IMAGES.md) before changing invariants. The original LICENSE is preserved. No real-storage throughput benchmark is claimed.

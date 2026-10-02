@@ -1,6 +1,8 @@
 package fnord.dedup
 
 import fnord.dedup.hash.FileHasher
+import fnord.dedup.cross.CrossScanEngine
+import fnord.dedup.cross.CrossScanOptions
 import fnord.dedup.hash.HashEngine
 import fnord.dedup.hash.Sha256Hasher
 import fnord.dedup.scan.DiscoveryEngine
@@ -53,6 +55,12 @@ final class Dedup implements AutoCloseable {
     void eachError(String name, Closure consumer) {
         long id = store.scan(name).scan_id as long
         store.eachRow('SELECT phase,relative_path,message,recorded_at_ms FROM scan_errors WHERE scan_id=? ORDER BY recorded_at_ms,relative_path', [id] as Object[], consumer)
+    }
+
+    /** Stream cross-scan observations and return coverage; errors use CrossScanOptions.onError. */
+    Map crossDuplicates(List<String> names, CrossScanOptions crossOptions = new CrossScanOptions(),
+                        StopToken stop = new StopToken(), Closure consumer) {
+        new CrossScanEngine(this, crossOptions, stop).run(names, consumer)
     }
 
     // The archive schema is initialized only when an archive API is called.
