@@ -58,7 +58,6 @@ final class ArchiveNames {
         }
         String readerFlavor = flavor
         if (volumes.size() == 1 && ((Number) volumes.get(0).slot).intValue() == 0) readerFlavor = 'single'
-        if (readerFlavor == 'zip-chunks') readerFlavor = 'zip-split'
         [missing: missing, ambiguous: ambiguous, reader_flavor: readerFlavor]
     }
 }

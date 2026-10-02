@@ -33,7 +33,8 @@ class ArchiveTemp implements AutoCloseable {
         // Persist all namespaces so a later invocation with a different temp option can reclaim the old one.
         store.exec('INSERT INTO archive_temp_roots VALUES (?,?) ON CONFLICT DO NOTHING', namespace.toString(), owner)
         for (Map old : store.rows('SELECT path,owner FROM archive_temp_roots')) {
-            cleanupNamespace(Path.of(old.path as String), old.owner as String)
+            // A copied database must not clean the original database's live work.
+            if (old.owner == owner) cleanupNamespace(Path.of(old.path as String), owner)
         }
     }
 
@@ -44,15 +45,33 @@ class ArchiveTemp implements AutoCloseable {
         if (!Files.isRegularFile(marker, LinkOption.NOFOLLOW_LINKS) || Files.size(marker) > 4096 || Files.readString(marker) != expected) {
             throw new IOException('Archive cleanup ownership marker mismatch')
         }
+        // No payloads exist until initialization is atomically renamed. A crash
+        // while creating marker/lease can only leave these two control files.
+        Files.newDirectoryStream(base, '.preparing-*').withCloseable { stream ->
+            for (Path prep : stream) {
+                if (!Files.isDirectory(prep, LinkOption.NOFOLLOW_LINKS)) throw new IOException('Unrecognized temp initialization path')
+                Files.newDirectoryStream(prep).withCloseable { controls ->
+                    for (Path control : controls) {
+                        if (!(control.fileName.toString() in ['.fnord-owner','.extract-lock']) ||
+                            !Files.isRegularFile(control, LinkOption.NOFOLLOW_LINKS) || Files.size(control) > 4096) {
+                            throw new IOException('Unrecognized temp initialization contents')
+                        }
+                        Files.delete(control)
+                    }
+                }
+                Files.delete(prep)
+            }
+        }
         Files.newDirectoryStream(base, 'attempt-*').withCloseable { stream ->
             for (Path path : stream) remove(path, expected)
         }
     }
 
     Path create() {
-        Path work = Files.createTempDirectory(namespace, 'attempt-', PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString('rwx------')))
+        Path work = Files.createTempDirectory(namespace, '.preparing-', PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString('rwx------')))
         Files.writeString(work.resolve('.fnord-owner'), owner, StandardOpenOption.CREATE_NEW)
         Files.createFile(work.resolve('.extract-lock'))
+        work = Files.move(work, namespace.resolve('attempt-' + UUID.randomUUID()), StandardCopyOption.ATOMIC_MOVE)
         live.add(work)
         work
     }
@@ -65,6 +84,24 @@ class ArchiveTemp implements AutoCloseable {
     private static void remove(Path path, String expected) {
         if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) throw new IOException('Refusing non-directory archive cleanup target')
         Path marker = path.resolve('.fnord-owner')
+        if (!Files.exists(marker, LinkOption.NOFOLLOW_LINKS)) {
+            // Recovery of the final cleanup steps: payloads are always removed
+            // before these controls. Never remove data from an unmarked folder.
+            List<Path> residue = []
+            Files.newDirectoryStream(path).withCloseable { stream ->
+                for (Path item : stream) {
+                    if (residue.size() >= 1) throw new IOException('Unmarked temporary directory contains data')
+                    residue.add(item)
+                }
+            }
+            if (residue.any { it.fileName.toString() != '.extract-lock' ||
+                    !Files.isRegularFile(it,LinkOption.NOFOLLOW_LINKS) || Files.size(it) != 0 }) {
+                throw new IOException('Refusing unowned temporary directory: ' + path)
+            }
+            residue.each { Files.delete(it) }
+            Files.delete(path)
+            return
+        }
         if (!Files.isRegularFile(marker, LinkOption.NOFOLLOW_LINKS) || Files.size(marker) > 4096 || Files.readString(marker) != expected) {
             throw new IOException('Refusing unowned temporary directory: ' + path)
         }
@@ -76,13 +113,18 @@ class ArchiveTemp implements AutoCloseable {
             try {
                 Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
                     @Override FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                        Files.delete(file); FileVisitResult.CONTINUE
+                        if (file != marker && file != lockPath) Files.delete(file)
+                        FileVisitResult.CONTINUE
                     }
                     @Override FileVisitResult postVisitDirectory(Path dir, IOException error) {
                         if (error != null) throw error
-                        Files.delete(dir); FileVisitResult.CONTINUE
+                        if (dir != path) Files.delete(dir)
+                        FileVisitResult.CONTINUE
                     }
                 })
+                Files.delete(marker)
+                Files.delete(lockPath)
+                Files.delete(path)
             } finally { lock.release() }
         }
     }

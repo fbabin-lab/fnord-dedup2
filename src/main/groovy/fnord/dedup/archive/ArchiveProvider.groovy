@@ -8,6 +8,6 @@ import java.nio.file.Path
  * The coordinator calls at most one provider at a time and alone owns JDBC.
  */
 interface ArchiveProvider {
-    String identity(Path work, ArchiveOptions options, StopToken stop)
-    Map extract(Path work, Map configuration, ArchiveOptions options, StopToken stop, Closure event)
+    String identity(Path work, ArchiveOptions options, StopToken stop) throws IOException
+    Map extract(Path work, Map configuration, ArchiveOptions options, StopToken stop, Closure event) throws IOException
 }

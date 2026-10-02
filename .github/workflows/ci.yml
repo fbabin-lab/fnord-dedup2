@@ -27,6 +27,8 @@ jobs:
         run: |
           python3 scripts/process-smoke.py
           python3 scripts/rollback-smoke.py
+      - name: Archive formats and process recovery
+        run: python3 scripts/archive-smoke.py --require-7z --upstream-rar5
       - name: Prepare reproducible test harness
         if: always()
         run: ./gradlew --no-daemon testHarness
@@ -35,7 +37,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-harness
-          path: build/test-harness/
+          path: |
+            build/test-harness/
+            build/archive-fixtures/
           retention-days: 3
       - name: Upload test reports
         if: always()

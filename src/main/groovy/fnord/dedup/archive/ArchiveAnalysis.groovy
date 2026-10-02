@@ -148,11 +148,8 @@ class ArchiveAnalysis {
         try {
             writer.flush()
             engine.progress.call([stage:'archive',status:'EXTRACTING',source:label,depth:depth,result_id:id])
-            String firstName = Path.of(volumes[0].relative_path as String).fileName.toString()
-            String lower = firstName.toLowerCase(Locale.ROOT)
-            boolean raw = (lower ==~ /.*\.(gz|bz2|xz|zst)$/) && !(lower ==~ /.*\.tar\.(gz|bz2|xz|zst)$/)
             Map cfg = [volumes:volumes.collect { it.path.toString() },flavor:arrangement.reader_flavor,
-                raw_compressed:raw,raw_name:firstName.replaceFirst(/(?i)\.(gz|bz2|xz|zst)$/, ''),
+                raw_compressed:true,raw_name:'data',
                 byte_budget:budget,min_free_bytes:options.minFreeBytes,max_members:options.maxMembers,
                 native_memory_bytes:options.nativeMemoryBytes]
             try {
@@ -174,7 +171,7 @@ class ArchiveAnalysis {
                 error(writer,id,null,'CONTENT','INCOMPLETE_STREAM','Native reader did not confirm end of archive')
             }
             retryable = summary.operational as boolean
-            reusable &= !retryable && !(summary.limited as boolean)
+            reusable &= !retryable && !(summary.limited as boolean) && (summary.reached_eof as boolean) && (summary.volume_complete as boolean)
             // An operationally interrupted extractor may have left extra unreported
             // files. Publish recovered members, but do not descend until a clean retry.
             if (!summary.operational && !summary.limited) {
@@ -198,7 +195,14 @@ class ArchiveAnalysis {
                         List<Map> parts = engine.store.rows('''SELECT ordinal AS source_id,relative_path,actual_size AS size,sha256,volume_slot AS slot
                             FROM archive_members WHERE result_id=? AND group_key=? ORDER BY volume_slot,ordinal LIMIT ?''',id,group.group_key,options.maxVolumes+1)
                         parts.each { Map part -> part.path = work.resolve(part.source_id.toString()) }
-                        Map child = process(parts,group.flavor as String,depth+1,label + '!' + group.group_key,nextAncestors)
+                        Map child
+                        try {
+                            child = process(parts,group.flavor as String,depth+1,label + '!' + group.group_key,nextAncestors)
+                        } catch (IOException failure) {
+                            error(writer,id,group.source_ordinal,'OPERATIONAL','NESTED_IO_ERROR',failure.message)
+                            retryable = true; reusable = false
+                            continue
+                        }
                         Map childResult = storage.result(child.result_id as String)
                         writer.add('archive_nested',[id,group.group_key,group.source_ordinal,child.result_id,child.duplicate])
                         height = Math.max(height,1 + (childResult.height as int))
@@ -254,6 +258,10 @@ class ArchiveAnalysis {
         writer.add('archive_members',[resultId,event.ordinal,path,filename,event.kind,event.declared_size,event.actual_size,
             event.modified_sec,event.modified_nano,normalHash,recoveredHash,event.integrity,event.encrypted,
             event.raw_path_base64,event.diagnostic,candidate?.group_key,candidate?.flavor,candidate?.slot])
+        if ((event.ordinal as long) % Math.min(engine.options.batchSize,1024) == 0) {
+            writer.flush()
+            engine.progress.call([stage:'archive',status:'MEMBERS_STAGED',result_id:resultId,members_staged:event.ordinal])
+        }
     }
 
     private void finish(String id, boolean retryable, boolean reusable, int height, Map summary) {

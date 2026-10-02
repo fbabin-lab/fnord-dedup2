@@ -39,6 +39,7 @@ class NativeArchiveProvider implements ArchiveProvider {
         if (version) argv.add('--version')
         ProcessBuilder builder = new ProcessBuilder(argv).directory(work.toFile())
         builder.environment().put('LC_ALL', 'C.UTF-8')
+        builder.environment().put('TZ', 'UTC')
         // Disallow libarchive fallback to external filter programs: only built-in native codecs.
         builder.environment().put('PATH', '/nonexistent')
         Process process = builder.start()
@@ -108,7 +109,7 @@ class NativeArchiveProvider implements ArchiveProvider {
                 }
             }
             if (readFailure.get() != null) throw new IOException('Archive helper protocol failure', readFailure.get())
-            if (summary == null || !(process.exitValue() in [0, 3, 4])) {
+            if (summary == null || summary.protocol != 1 || !(process.exitValue() in [0, 3, 4])) {
                 throw new IOException('Archive helper exited without a valid result: ' + process.exitValue())
             }
             summary.exit_code = process.exitValue()

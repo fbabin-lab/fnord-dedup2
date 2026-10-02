@@ -5,6 +5,10 @@ import org.duckdb.DuckDBAppender
 
 /** Bounded row batches, including an explicit native transaction before any appender. */
 class ArchiveBatch {
+    private static final Map<String, Set<Integer>> INT_COLUMNS = [
+        archive_inputs: [3,8] as Set, archive_volumes: [1,2] as Set,
+        archive_members: [8,17] as Set, archive_nested: [] as Set, archive_errors: [] as Set
+    ]
     private final DuckStore store
     private final int limit
     private final Map<String,List<List>> pending = [:]
@@ -30,10 +34,10 @@ class ArchiveBatch {
                 store.connection.createAppender('main', table).withCloseable { DuckDBAppender a ->
                     rows.each { List row ->
                         a.beginRow()
-                        row.each { Object v ->
+                        row.eachWithIndex { Object v, int column ->
                             if (v == null) a.appendNull()
                             else if (v instanceof Boolean) a.append((boolean) v)
-                            else if (v instanceof Integer) a.append((int) v)
+                            else if (v instanceof Number && INT_COLUMNS[table].contains(column)) a.append(((Number) v).intValue())
                             else if (v instanceof Number) a.append(((Number) v).longValue())
                             else a.append(v.toString())
                         }
