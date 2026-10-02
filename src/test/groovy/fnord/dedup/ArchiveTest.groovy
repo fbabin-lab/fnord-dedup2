@@ -22,7 +22,7 @@ class ArchiveTest {
         Path probe = Files.createDirectories(work.resolve('native-runtime-probe'))
         try {
             new NativeArchiveProvider().identity(probe, options(), new StopToken())
-        } catch (IOException failure) {
+        } catch (ArchiveRuntimeUnavailable failure) {
             Assumptions.assumeTrue(false,
                 'Native archive runtime unavailable; archive integration test skipped: ' + failure.message)
         }

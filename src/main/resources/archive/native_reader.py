@@ -38,16 +38,21 @@ def parent_guard(expected):
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
 
+class NativeUnavailable(Exception):
+    pass
+
+
 class Native:
     def __init__(self):
-        candidates = []
         override = os.environ.get('FNORD_LIBARCHIVE')
         if override:
-            candidates.append(override)
-        discovered = ctypes.util.find_library('archive')
-        if discovered:
-            candidates.append(discovered)
-        candidates.extend(['libarchive.so.13', 'libarchive.so'])
+            candidates = [override]
+        else:
+            candidates = []
+            discovered = ctypes.util.find_library('archive')
+            if discovered:
+                candidates.append(discovered)
+            candidates.extend(['libarchive.so.13', 'libarchive.so'])
 
         errors = []
         self.lib = None
@@ -60,7 +65,7 @@ class Native:
                 errors.append(f'{candidate}: {exc}')
         if self.lib is None:
             detail = '; '.join(errors[-3:]) if errors else 'no candidates were found'
-            raise OSError(
+            raise NativeUnavailable(
                 'libarchive runtime not found; install your distribution libarchive '
                 'runtime package or set FNORD_LIBARCHIVE to the shared-library path; ' + detail
             )
@@ -448,6 +453,10 @@ def main():
 if __name__ == '__main__':
     try:
         sys.exit(main())
+    except NativeUnavailable as exc:
+        emit(dict(event='fatal', category='CAPABILITY', code='NATIVE_RUNTIME_UNAVAILABLE',
+                  message=str(exc)[:4096]))
+        sys.exit(4)
     except Exception as exc:
         emit(dict(event='fatal', category='OPERATIONAL', code='HELPER_FAILED',
                   message=str(exc)[:4096]))

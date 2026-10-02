@@ -23,6 +23,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libarchive13t64 python3 zip p7zip-full
       - name: Build and unit/integration tests
         run: ./gradlew --no-daemon test installDist distTar
+      - name: Verify build without optional archive runtime
+        env:
+          FNORD_LIBARCHIVE: /definitely/missing/libarchive.so
+        run: ./gradlew --no-daemon test --rerun-tasks
       - name: Installed application and process recovery tests
         run: |
           python3 scripts/process-smoke.py
