@@ -33,6 +33,8 @@ jobs:
           python3 scripts/rollback-smoke.py
       - name: Archive formats and process recovery
         run: python3 scripts/archive-smoke.py --require-7z --upstream-rar5
+      - name: Database merge and atomic process recovery
+        run: python3 scripts/database-merge-smoke.py
       - name: Prepare reproducible test harness
         if: always()
         run: ./gradlew --no-daemon testHarness

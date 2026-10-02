@@ -96,6 +96,19 @@ build/install/fnord-dedup2/bin/fnord-dedup2-groovy examples/images.groovy "$DB" 
 
 `Dedup` exposes filesystem, archive and image analysis APIs. Operations are synchronous and use the same exclusive database lock as the CLI. Streaming callbacks must not issue reentrant queries. See the examples and domain guides.
 
+## Database merge
+
+Import all scans from one existing database into another, with the source read-only. Any overlapping scan name refuses the entire import. Every imported scan ID and archive/image result UUID is remapped; canonical sharing, nested relationships and metadata are retained. Both databases are audited and all inserts commit atomically. No referenced source files or native archive/image tools are needed.
+
+```bash
+build/install/fnord-dedup2/bin/fnord-dedup2-groovy scripts/merge-database.groovy \
+  --source /data/source.duckdb --destination /data/master.duckdb --dry-run
+
+# Remove --dry-run to perform the import after a successful preflight.
+```
+
+The script is included under `scripts/` in the installed distribution. Close other application sessions using either database first. See [the merge guide](docs/MERGE.md) for validation, cancellation, output, Groovy API, WAL handling and unsupported states. The source's temporary-root registrations and feature instance IDs are never copied.
+
 ## Verification and development
 
 ```bash
@@ -103,6 +116,7 @@ build/install/fnord-dedup2/bin/fnord-dedup2-groovy examples/images.groovy "$DB" 
 python3 scripts/process-smoke.py
 python3 scripts/rollback-smoke.py
 python3 scripts/archive-smoke.py
+python3 scripts/database-merge-smoke.py
 ```
 
 For the full archive matrix install zip and p7zip-full and run `python3 scripts/archive-smoke.py --require-7z --upstream-rar5`. That optional RAR5 test downloads data-only fixtures from an immutable libarchive commit; ordinary operation never downloads anything.

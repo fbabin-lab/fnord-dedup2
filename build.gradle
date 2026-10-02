@@ -42,6 +42,7 @@ distributions {
             from('LICENSE')
             from('docs') { into 'docs' }
             from('examples') { into 'examples' }
+            from('scripts/merge-database.groovy') { into 'scripts' }
         }
     }
 }
