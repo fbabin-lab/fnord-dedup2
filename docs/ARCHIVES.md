@@ -2,7 +2,7 @@
 
 ## Runtime and supported families
 
-The coordinator, checksums, database and CLI are Groovy/Java. A bundled Python 3 helper calls the system's **native libarchive** shared library (`libarchive.so.13`) through ctypes. Python needs no pip packages. Ubuntu 24.04 packages are `python3 libarchive13t64`; package names can differ on other distributions. Do not run extraction as root. Keep the native library updated.
+The coordinator, checksums, database and CLI are Groovy/Java. A bundled Python 3 helper calls the system's **native libarchive** shared library through ctypes. The helper resolves the platform library name at runtime instead of requiring a specific SONAME; `FNORD_LIBARCHIVE` may point to an explicit shared-library path when normal platform discovery is insufficient. Python needs no pip packages. Ubuntu 24.04 packages are `python3 libarchive13t64`; package names can differ on other distributions. Archive analysis requires the native runtime, but the normal filesystem scanner and its build/tests do not. Native-dependent tests are skipped when that optional runtime is absent; CI installs it and executes them. Do not run extraction as root. Keep the native library updated.
 
 Candidate filename families are ZIP, TAR, tgz/tbz/tbz2/txz/tzst, gzip/bzip2/xz/zstd, RAR and 7z, including `.partN.rar`, old `.rar/.r00...`, `.7z.001...`, `.zip.001...`, and `.z01.../.zip` volumes. The native reader validates the actual format. Extension matching is a cheap filter, not proof of validity. Unrecognized extensions are not searched by reading every file's contents.
 

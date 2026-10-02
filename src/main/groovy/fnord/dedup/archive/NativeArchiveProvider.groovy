@@ -35,6 +35,10 @@ class NativeArchiveProvider implements ArchiveProvider {
                 Files.copy(input, script)
             }
         }
+        Path python = Path.of(options.python)
+        if (!Files.isRegularFile(python) || !Files.isExecutable(python)) {
+            throw new ArchiveRuntimeUnavailable('Python executable unavailable: ' + python)
+        }
         List<String> argv = [options.python, '-I', script.toString(), ProcessHandle.current().pid().toString()]
         if (version) argv.add('--version')
         ProcessBuilder builder = new ProcessBuilder(argv).directory(work.toFile())
@@ -101,6 +105,9 @@ class NativeArchiveProvider implements ArchiveProvider {
                         if (summary != null) throw new IOException('Duplicate archive summary')
                         summary = row
                     } else if (row.event == 'fatal') {
+                        if (row.code == 'NATIVE_RUNTIME_UNAVAILABLE') {
+                            throw new ArchiveRuntimeUnavailable('Archive helper unavailable: ' + row.message)
+                        }
                         throw new IOException('Archive helper failed: ' + row.message)
                     } else {
                         if (summary != null) throw new IOException('Archive event after summary')

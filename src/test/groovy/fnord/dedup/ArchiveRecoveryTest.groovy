@@ -2,6 +2,7 @@ package fnord.dedup
 
 import fnord.dedup.archive.*
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Assumptions
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.*
 import java.util.zip.GZIPOutputStream
@@ -10,6 +11,16 @@ class ArchiveRecoveryTest {
     @TempDir Path work
     ScanOptions tuning() { new ScanOptions(batchSize:2,memoryLimit:'128MB',databaseThreads:1) }
     ArchiveOptions options() { new ArchiveOptions(minFreeBytes:0) }
+
+    void requireNativeArchiveRuntime() {
+        Path probe = Files.createDirectories(work.resolve('native-runtime-probe'))
+        try {
+            new NativeArchiveProvider().identity(probe, options(), new StopToken())
+        } catch (ArchiveRuntimeUnavailable failure) {
+            Assumptions.assumeTrue(false,
+                'Native archive runtime unavailable; archive integration test skipped: ' + failure.message)
+        }
+    }
 
     @Test void integerJsonValuesAreWrittenAccordingToSqlColumnType() {
         Dedup.open(work.resolve('db'),tuning()).withCloseable { d ->
@@ -76,6 +87,7 @@ class ArchiveRecoveryTest {
     }
 
     @Test void operationalFailureKeepsReadableMembersAndCanBeRetried() {
+        requireNativeArchiveRuntime()
         Path root=Files.createDirectory(work.resolve('input'))
         Files.write(root.resolve('one.zip'),ArchiveTest.zip(['file':'one'.bytes]))
         Files.write(root.resolve('two.zip'),ArchiveTest.zip(['file':'two'.bytes]))
@@ -101,6 +113,7 @@ class ArchiveRecoveryTest {
     }
 
     @Test void renamedCompressedStreamsShareStableLogicalNames() {
+        requireNativeArchiveRuntime()
         Path root=Files.createDirectory(work.resolve('input'))
         ByteArrayOutputStream bytes=new ByteArrayOutputStream()
         new GZIPOutputStream(bytes).withCloseable {it.write('plain stream'.bytes)}
