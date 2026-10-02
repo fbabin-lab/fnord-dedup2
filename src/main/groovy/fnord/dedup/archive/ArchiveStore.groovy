@@ -34,7 +34,7 @@ class ArchiveStore {
         db.transaction {
             db.exec('DELETE FROM archive_inputs WHERE scan_id=?', id)
             db.exec('DELETE FROM archive_jobs WHERE scan_id=?', id)
-            db.exec("INSERT INTO archive_runs(scan_id,phase) VALUES (?,'IDENTIFYING') ON CONFLICT(scan_id) DO UPDATE SET phase='IDENTIFYING',updated_at=current_timestamp", id)
+            db.exec("INSERT INTO archive_runs(scan_id,phase) VALUES (?,'IDENTIFYING') ON CONFLICT(scan_id) DO UPDATE SET phase='IDENTIFYING',updated_at=now()", id)
         }
         db.exec('''CREATE OR REPLACE TEMP TABLE archive_candidates AS
             SELECT row_number() OVER (ORDER BY entry_id) AS seq, * FROM entries

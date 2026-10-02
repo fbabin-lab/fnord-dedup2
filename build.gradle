@@ -5,9 +5,7 @@ plugins {
 
 group = 'org.fnord'
 version = '0.1.0'
-
 repositories { mavenCentral() }
-
 dependencies {
     implementation 'org.apache.groovy:groovy:4.0.33'
     implementation 'org.apache.groovy:groovy-json:4.0.33'
@@ -16,8 +14,8 @@ dependencies {
     testImplementation platform('org.junit:junit-bom:5.12.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testRuntimeOnly 'org.junit.platform:junit-platform-console'
 }
-
 java {
     toolchain { languageVersion = JavaLanguageVersion.of(21) }
     withSourcesJar()
@@ -26,14 +24,12 @@ application {
     mainClass = 'fnord.dedup.cli.Main'
     applicationDefaultJvmArgs = ['-Xms64m', '-Xmx512m']
 }
-tasks.withType(GroovyCompile).configureEach {
-    groovyOptions.encoding = 'UTF-8'
-}
+tasks.withType(GroovyCompile).configureEach { groovyOptions.encoding = 'UTF-8' }
 test {
     useJUnitPlatform()
     maxParallelForks = 1
     maxHeapSize = '512m'
-    testLogging { events 'passed', 'skipped', 'failed' }
+    testLogging { events 'passed', 'skipped', 'failed'; exceptionFormat = 'full' }
 }
 tasks.withType(AbstractArchiveTask).configureEach {
     preserveFileTimestamps = false
@@ -48,4 +44,12 @@ distributions {
             from('examples') { into 'examples' }
         }
     }
+}
+// Opt-in portable harness for reproducing CI without another dependency download.
+// Contains repository sources and public test dependencies only, never credentials.
+tasks.register('testHarness', Sync) {
+    into layout.buildDirectory.dir('test-harness')
+    from('src') { into 'src' }
+    from('scripts') { into 'scripts' }
+    from(configurations.testRuntimeClasspath) { into 'lib' }
 }

@@ -19,12 +19,24 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Native archive runtime and fixture tools
+        run: sudo apt-get update && sudo apt-get install -y libarchive13t64 python3 zip p7zip-full
       - name: Build and unit/integration tests
         run: ./gradlew --no-daemon test installDist distTar
       - name: Installed application and process recovery tests
         run: |
           python3 scripts/process-smoke.py
           python3 scripts/rollback-smoke.py
+      - name: Prepare reproducible test harness
+        if: always()
+        run: ./gradlew --no-daemon testHarness
+      - name: Upload test harness
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-harness
+          path: build/test-harness/
+          retention-days: 3
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
