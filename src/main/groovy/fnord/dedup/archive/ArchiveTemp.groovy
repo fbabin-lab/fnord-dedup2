@@ -13,7 +13,8 @@ class ArchiveTemp implements AutoCloseable {
     final String owner
     private final Set<Path> live = new LinkedHashSet<>()
 
-    ArchiveTemp(DuckStore store, ArchiveOptions options, String instanceId, Path sourceRoot) {
+    ArchiveTemp(DuckStore store, ArchiveOptions options, String instanceId, Path sourceRoot, String registry = 'archive_temp_roots') {
+        if (!(registry in ['archive_temp_roots','image_temp_roots'])) throw new IllegalArgumentException('Unknown temporary registry')
         Path requested = options.tempDirectory ?: Path.of(store.database.toString() + '.archives-tmp')
         Files.createDirectories(requested)
         Path root = requested.toRealPath()
@@ -31,8 +32,8 @@ class ArchiveTemp implements AutoCloseable {
             }
         } else Files.writeString(marker, owner, StandardOpenOption.CREATE_NEW)
         // Persist all namespaces so a later invocation with a different temp option can reclaim the old one.
-        store.exec('INSERT INTO archive_temp_roots VALUES (?,?) ON CONFLICT DO NOTHING', namespace.toString(), owner)
-        for (Map old : store.rows('SELECT path,owner FROM archive_temp_roots')) {
+        store.exec("INSERT INTO ${registry} VALUES (?,?) ON CONFLICT DO NOTHING", namespace.toString(), owner)
+        for (Map old : store.rows("SELECT path,owner FROM ${registry}")) {
             // A copied database must not clean the original database's live work.
             if (old.owner == owner) cleanupNamespace(Path.of(old.path as String), owner)
         }

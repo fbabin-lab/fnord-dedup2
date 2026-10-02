@@ -67,5 +67,16 @@ final class Dedup implements AutoCloseable {
     void eachArchiveVolume(String resultId, Closure consumer) { archives().eachVolume(resultId, consumer) }
     void eachArchiveError(String name, Closure consumer) { archives().eachError(name, consumer) }
 
+    Map analyzeImages(String name, fnord.dedup.image.ImageOptions imageOptions = new fnord.dedup.image.ImageOptions(), StopToken stop = new StopToken()) {
+        new fnord.dedup.image.ImageAnalysis(store, options, imageOptions, stop, progress).run(name)
+    }
+    Map imageStatus(String name) { new fnord.dedup.image.ImageStore(store).status(name) }
+    void eachImage(String name, Closure consumer) { new fnord.dedup.image.ImageStore(store).eachImage(name, consumer) }
+    void eachImageEntry(String result, Closure consumer) { new fnord.dedup.image.ImageStore(store).eachResult('image_entries', result, consumer) }
+    void eachImageFilesystem(String result, Closure consumer) { new fnord.dedup.image.ImageStore(store).eachResult('image_filesystems', result, consumer) }
+    void eachImagePartition(String result, Closure consumer) { new fnord.dedup.image.ImageStore(store).eachResult('image_partitions', result, consumer) }
+    void eachImageComponent(String result, Closure consumer) { new fnord.dedup.image.ImageStore(store).eachResult('image_components', result, consumer) }
+    void eachImageError(String name, Closure consumer) { new fnord.dedup.image.ImageStore(store).eachError(name, consumer) }
+
     @Override void close() { store.close() }
 }
