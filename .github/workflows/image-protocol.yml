@@ -1,0 +1,20 @@
+name: image-protocol-diagnostic
+on:
+  push:
+    branches: ['debug/image-protocol']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-protocol:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Native runtime
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y qemu-utils python3-guestfs libguestfs-tools linux-image-generic e2fsprogs
+          sudo chmod a+r /boot/vmlinuz-*
+      - name: Stream native guest files
+        run: /usr/bin/python3 scripts/image-protocol-smoke.py
