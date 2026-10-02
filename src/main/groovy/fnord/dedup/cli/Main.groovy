@@ -43,6 +43,7 @@ class Main implements Runnable {
     final StopToken stop = new StopToken()
     private long lastProgressNanos = 0L
     private String lastStage = ''
+    private String lastProgressState = ''
 
     @Override void run() { spec.commandLine().usage(spec.commandLine().out) }
 
@@ -53,11 +54,13 @@ class Main implements Runnable {
         Dedup.open(database, options).withCloseable { Dedup engine ->
             engine.progress = { Map event ->
                 long now = System.nanoTime()
-                if (!quiet && (event.stage != lastStage || now - lastProgressNanos >= 1_000_000_000L)) {
+                String state = (event.state ?: '').toString()
+                if (!quiet && (event.stage != lastStage || state != lastProgressState || now - lastProgressNanos >= 1_000_000_000L)) {
                     spec.commandLine().err.println(JsonOutput.toJson(event))
                     spec.commandLine().err.flush()
                     lastProgressNanos = now
                     lastStage = event.stage
+                    lastProgressState = state
                 }
             }
             action.call(engine)
@@ -98,7 +101,7 @@ class Main implements Runnable {
         finally {
             finished.countDown()
             try { Runtime.runtime.removeShutdownHook(hook) }
-            catch (IllegalStateException ignored) { /* JVM shutdown is already underway. */ }
+            catch (IllegalStateException ignored) { }
         }
         System.exit(exitCode)
     }

@@ -23,14 +23,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Native image runtime and data-only fixture tools
+      - name: Native image runtime and fixture tools
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y qemu-utils python3-guestfs libguestfs-tools linux-image-generic genisoimage e2fsprogs ntfs-3g dosfstools libarchive13t64
           sudo chmod a+r /boot/vmlinuz-*
       - name: Build and regression tests
         run: ./gradlew --no-daemon test installDist distTar
-      - name: Native format matrix and real interruption recovery
+      - name: Native appliance preflight
+        run: /usr/bin/python3 scripts/image-preflight.py
+      - name: Native formats and real interruption recovery
         run: |
           /usr/bin/python3 scripts/image-smoke.py
           /usr/bin/python3 scripts/image-extra-smoke.py
@@ -39,5 +41,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: image-test-reports
-          path: build/reports/tests/
+          path: |
+            build/reports/tests/
+            build/image-preflight-errors.json
           retention-days: 7
