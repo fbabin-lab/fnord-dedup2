@@ -50,7 +50,11 @@ def guarded(cfg, argv, label):
 
 
 def probe(cfg):
-    argv = ['/usr/bin/qemu-img', 'info', '--output=json', 'json:' + json.dumps(cfg['graph'], separators=(',', ':'))]
+    # info opens only the primary node (BDRV_O_NO_BACKING). Supplying a nested
+    # backing object here is rejected by QEMU 8. The NBD open below uses the
+    # complete already-approved graph; probing must not implicitly open parents.
+    primary = {k: v for k, v in cfg['graph'].items() if k != 'backing'}
+    argv = ['/usr/bin/qemu-img', 'info', '--output=json', 'json:' + json.dumps(primary, separators=(',', ':'))]
     output = os.path.join(cfg['work'], 'probe-output')
     diagnostic = os.path.join(cfg['work'], 'probe-errors')
     with open(output, 'wb') as out, open(diagnostic, 'wb') as err:
@@ -73,7 +77,6 @@ def probe(cfg):
         info = json.load(f)
     if info.get('encrypted'):
         raise Failure('ENCRYPTED_UNREADABLE', 'Image encryption requires credentials', 'ENCRYPTION')
-    # Never infer a missing parent to be zeroes. Unsupported native variants fail closed.
     if info.get('backing-filename') and not cfg['graph'].get('backing'):
         raise Failure('UNAPPROVED_DEPENDENCY', 'Native image reports an unapproved parent', 'SECURITY')
     return info
@@ -120,7 +123,7 @@ def inspect(cfg):
     work = cfg['work']
     check_space(cfg)
     socket = os.path.join(work, 'disk.sock')
-    argv = ['/usr/bin/qemu-nbd', '--read-only', '--persistent', '--shared=1', '--socket', 'disk.sock',
+    argv = ['/usr/bin/qemu-nbd', '--read-only', '--persistent', '--shared=1', '--socket', '/proc/' + str(os.getpid()) + '/cwd/disk.sock',
             'json:' + json.dumps(cfg['graph'], separators=(',', ':'))]
     nbd_log = open(os.path.join(work, 'nbd-errors'), 'wb')
     nbd = subprocess.Popen(guarded(cfg, argv, 'nbd'), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=nbd_log)
@@ -162,8 +165,7 @@ def inspect(cfg):
                 for p in g.part_list(device):
                     emit('partition', device=device, number=p['part_num'], start_bytes=p['part_start'], size_bytes=p['part_size'], table_type=table)
             except RuntimeError:
-                # A directly contained filesystem legitimately has no partition table.
-                pass
+                pass  # A filesystem image legitimately has no partition table.
         found = g.list_filesystems()
         if not found:
             error('NO_FILESYSTEM', 'No accessible filesystem was discovered')
@@ -240,10 +242,8 @@ def inspect(cfg):
                             resource.setrlimit(resource.RLIMIT_FSIZE, (cfg['max_listing_bytes'], cfg['max_temp_bytes']))
                             try:
                                 g.ls0(directory, listing)
-                                complete_listing = True
                             except RuntimeError as e:
                                 error('DIRECTORY_READ_ERROR', e, fs)
-                                complete_listing = False
                             finally:
                                 resource.setrlimit(resource.RLIMIT_FSIZE, (cfg['max_temp_bytes'], cfg['max_temp_bytes']))
                             if os.path.exists(listing):
@@ -332,7 +332,6 @@ def supervise(parent_pid):
         raise Failure('PROTOCOL_LIMIT', 'Image configuration too large', 'LIMIT')
     cfg = json.loads(raw)
     cfg['work'] = os.getcwd()
-    # Version calls also use finite defaults.
     cfg.setdefault('memory_bytes', 4294967296)
     cfg.setdefault('max_temp_bytes', 1099511627776)
     cfg.setdefault('timeout', 14400)
@@ -377,7 +376,6 @@ def supervise(parent_pid):
                     break
                 time.sleep(.1)
         finally:
-            # Kill the entire group even if worker exited: no orphaned NBD/QEMU.
             with contextlib.suppress(ProcessLookupError):
                 os.killpg(process.pid, signal.SIGTERM)
             try:

@@ -26,13 +26,14 @@ jobs:
       - name: Native image runtime and data-only fixture tools
         run: |
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y qemu-utils python3-guestfs libguestfs-tools linux-image-generic genisoimage e2fsprogs libarchive13t64
-          # Supermin needs to read the host kernel, but scanner/tests run as runner.
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y qemu-utils python3-guestfs libguestfs-tools linux-image-generic genisoimage e2fsprogs ntfs-3g dosfstools libarchive13t64
           sudo chmod a+r /boot/vmlinuz-*
       - name: Build and regression tests
         run: ./gradlew --no-daemon test installDist distTar
       - name: Native format matrix and real interruption recovery
-        run: python3 scripts/image-smoke.py
+        run: |
+          /usr/bin/python3 scripts/image-smoke.py
+          /usr/bin/python3 scripts/image-extra-smoke.py
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
