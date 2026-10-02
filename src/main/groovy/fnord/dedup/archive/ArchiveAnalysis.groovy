@@ -52,9 +52,11 @@ class ArchiveAnalysis {
                 for (Map job : jobs) {
                     stop.check()
                     after = job.first_entry as long
-                    if (!(options.force || job.status == 'PENDING' || job.retryable || (options.retryErrors && job.status != 'COMPLETE'))) continue
-                    engine.store.exec("UPDATE archive_jobs SET status='RUNNING',result_id=NULL,duplicate=false,retryable=false,diagnostic=NULL WHERE scan_id=? AND group_key=?", scanId, job.group_key)
                     List<Map> inputs = engine.store.rows('SELECT * FROM archive_inputs WHERE scan_id=? AND group_key=? ORDER BY slot,source_id LIMIT ?', scanId, job.group_key, options.maxVolumes + 1)
+                    boolean belowMinimum = archiveSize(inputs) < options.minSizeBytes
+                    if (!(belowMinimum || options.force || job.status in ['PENDING','SKIPPED'] || job.retryable || (options.retryErrors && job.status != 'COMPLETE'))) continue
+                    if (belowMinimum && job.status == 'SKIPPED') continue
+                    engine.store.exec("UPDATE archive_jobs SET status='RUNNING',result_id=NULL,duplicate=false,retryable=false,diagnostic=NULL WHERE scan_id=? AND group_key=?", scanId, job.group_key)
                     inputs.each { Map v -> v.path = Path.of(scan.root as String).resolve(v.relative_path as String) }
                     try {
                         Map found = process(inputs, job.flavor as String, 0, job.group_key as String, new LinkedHashSet<String>())
@@ -83,6 +85,19 @@ class ArchiveAnalysis {
         String id = UUID.randomUUID().toString()
         engine.store.exec("INSERT INTO archive_results(result_id,scan_id,source_label,policy,provider,state) VALUES (?,?,?,?,?,'RUNNING')", id,scanId,label,policy,providerId)
         ArchiveBatch writer = storage.batch()
+        long archiveBytes = archiveSize(volumes)
+        if (archiveBytes < options.minSizeBytes) {
+            int ordinal = 0
+            for (Map volume : volumes) {
+                writer.add('archive_volumes',[id,++ordinal,volume.slot,volume.source_id,volume.relative_path,volume.size,null])
+            }
+            writer.flush()
+            Map summary = [reason:'below minimum archive size',archive_bytes:archiveBytes,minimum_bytes:options.minSizeBytes]
+            engine.store.exec("UPDATE archive_results SET state='SKIPPED',retryable=false,reusable=false,height=0,summary_json=?,completed_at=current_timestamp WHERE result_id=?",
+                JsonOutput.toJson(summary),id)
+            engine.progress.call([stage:'archive',status:'SKIPPED',source:label,depth:depth,result_id:id,archive_bytes:archiveBytes,minimum_bytes:options.minSizeBytes])
+            return [result_id:id,duplicate:false]
+        }
         Map arrangement = ArchiveNames.arrange(volumes, flavor)
         if (volumes.empty || volumes.size() > options.maxVolumes || arrangement.ambiguous) {
             error(writer,id,null,'LIMIT',arrangement.ambiguous ? 'AMBIGUOUS_VOLUMES' : 'VOLUME_LIMIT', 'Archive volume set is ambiguous or exceeds the configured volume limit')
@@ -206,9 +221,11 @@ class ArchiveAnalysis {
                         Map childResult = storage.result(child.result_id as String)
                         writer.add('archive_nested',[id,group.group_key,group.source_ordinal,child.result_id,child.duplicate])
                         height = Math.max(height,1 + (childResult.height as int))
-                        if (childResult.state != 'COMPLETE') error(writer,id,group.source_ordinal,'CHILD','NESTED_ERRORS','Nested archive has incomplete/error results: ' + child.result_id)
-                        retryable |= childResult.retryable as boolean
-                        reusable &= childResult.reusable as boolean
+                        if (childResult.state != 'SKIPPED') {
+                            if (childResult.state != 'COMPLETE') error(writer,id,group.source_ordinal,'CHILD','NESTED_ERRORS','Nested archive has incomplete/error results: ' + child.result_id)
+                            retryable |= childResult.retryable as boolean
+                            reusable &= childResult.reusable as boolean
+                        }
                     }
                 }
             }
@@ -293,6 +310,17 @@ class ArchiveAnalysis {
         if (a.size() != (volume.expected_size as long) || time.epochSecond != (volume.expected_sec as long) || time.nano != (volume.expected_nano as int)) {
             throw new ArchiveSourceChanged('SOURCE_CHANGED: archive changed while being read: ' + volume.relative_path)
         }
+    }
+
+    private static long archiveSize(List<Map> volumes) {
+        long total = 0L
+        for (Map volume : volumes) {
+            Object raw = volume.size
+            if (!(raw instanceof Number) || (raw as Number).longValue() < 0L) return Long.MAX_VALUE
+            try { total = Math.addExact(total, (raw as Number).longValue()) }
+            catch (ArithmeticException ignored) { return Long.MAX_VALUE }
+        }
+        total
     }
 
     private static String fingerprint(List<Map> volumes, String flavor) {

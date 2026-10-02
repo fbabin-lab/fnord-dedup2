@@ -55,7 +55,7 @@ Members retain logical paths, filenames, types, sizes, available timestamps and 
 
 Repeat `archives --name ...` after interruption. The current archive may be extracted again; completed results survive. Ordinary `resume` still handles only filesystem phases. Use `archives --retry-errors` for terminal partial results or `--force` to bypass caches. New volumes or changed source files require a new named scan.
 
-Temporary storage must be outside the scanned tree. Finite adjustable defaults include depth 32, one million members per archive, 100 GiB per extraction/temporary stack, 1 GiB free reserve and one-hour extractor timeout. See [the archive guide](docs/ARCHIVES.md).
+Temporary storage must be outside the scanned tree. Finite adjustable defaults include depth 32, one million members per archive, 100 GiB per extraction/temporary stack, 1 GiB free reserve and one-hour extractor timeout. `--archive-min-size-bytes N` optionally skips root and nested logical archive sets smaller than N bytes without treating them as errors; multipart volume sizes are summed. See [the archive guide](docs/ARCHIVES.md).
 
 ## Optional disk-image phase
 

@@ -186,6 +186,80 @@ class ArchiveTest {
         assert ArchiveNames.arrange([[slot:1]],'zip-split').missing
     }
 
+
+    @Test void minimumArchiveSizeSkipsWithoutErrorsAndCanBeLoweredLater() {
+        requireNativeArchiveRuntime()
+        Path input=root()
+        Path small=input.resolve('small.zip')
+        Files.write(small,zip(['tiny.txt':'tiny'.bytes]))
+        long threshold=Files.size(small)+1L
+        Dedup.open(database(),scanOptions()).withCloseable { d ->
+            d.scan('s',input,new StopToken(),true)
+            ArchiveOptions limited=options(); limited.minSizeBytes=threshold
+            Map state=d.analyzeArchives('s',limited)
+            assert state.phase=='COMPLETE'
+            assert state.skipped==1
+            assert state.errors==0
+            assert state.checksummed_members==0
+            Map skipped=archives(d).find { it.location_kind=='ROOT' }
+            assert skipped.status=='SKIPPED'
+            assert members(d,skipped.result_id).empty
+            assert d.store.rows('SELECT count(*) AS n FROM archive_volumes WHERE result_id=? AND sha256 IS NULL',skipped.result_id)[0].n==1
+
+            ArchiveOptions enabled=options(); enabled.minSizeBytes=0
+            Map resumed=d.analyzeArchives('s',enabled)
+            assert resumed.phase=='COMPLETE'
+            assert resumed.skipped==0
+            assert resumed.checksummed_members==1
+            Map completed=archives(d).find { it.location_kind=='ROOT' }
+            assert completed.status=='COMPLETE'
+            assert members(d,completed.result_id).find { it.filename=='tiny.txt' }.sha256==sha('tiny'.bytes)
+        }
+        cleanTemp()
+    }
+
+    @Test void minimumArchiveSizeAppliesToNestedArchivesAndMultipartUsesTotalBytes() {
+        requireNativeArchiveRuntime()
+        Path input=root()
+        byte[] inner=zip(['deep.txt':'deep'.bytes])
+        byte[] padding=new byte[8192]
+        new Random(42L).nextBytes(padding)
+        Path outer=input.resolve('outer.zip')
+        Files.write(outer,zip(['inside.zip':inner,'padding.bin':padding]))
+        assert Files.size(outer)>inner.length
+        long threshold=inner.length+1L
+
+        Dedup.open(database(),scanOptions()).withCloseable { d ->
+            d.scan('s',input,new StopToken(),true)
+            ArchiveOptions limited=options(); limited.minSizeBytes=threshold
+            Map state=d.analyzeArchives('s',limited)
+            assert state.phase=='COMPLETE'
+            assert state.skipped==0
+            assert state.errors==0
+            assert state.nested_archives==1
+            Map nested=archives(d).find { it.location_kind=='NESTED' }
+            assert nested.status=='SKIPPED'
+            assert members(d,nested.result_id).empty
+            assert members(d,archives(d).find { it.location_kind=='ROOT' }.result_id).find { it.filename=='inside.zip' }.sha256==sha(inner)
+        }
+
+        Path multi=Files.createDirectories(work.resolve('multi'))
+        byte[] first=zip(['a.txt':'a'.bytes])
+        Files.write(multi.resolve('set.zip.001'),first)
+        Files.write(multi.resolve('set.zip.002'),new byte[128])
+        long combined=Files.size(multi.resolve('set.zip.001'))+Files.size(multi.resolve('set.zip.002'))
+        Dedup.open(work.resolve('multi.duckdb'),scanOptions()).withCloseable { d ->
+            d.scan('m',multi,new StopToken(),true)
+            ArchiveOptions limited=options(); limited.minSizeBytes=combined+1L
+            Map state=d.analyzeArchives('m',limited)
+            assert state.skipped==1
+            Map skipped=archives(d).find { it.location_kind=='ROOT' }
+            assert skipped.status=='SKIPPED'
+            assert d.store.rows('SELECT sum(size) AS n FROM archive_volumes WHERE result_id=?',skipped.result_id)[0].n==combined
+        }
+        cleanTemp()
+    }
+
     @Test void archiveCommandsAreRegisteredAndMachineReadable() {
         requireNativeArchiveRuntime()
         Path input=root()
@@ -193,7 +267,7 @@ class ArchiveTest {
         Dedup.open(database(),scanOptions()).withCloseable { it.scan('s',input,new StopToken(),true) }
         StringWriter out=new StringWriter(),err=new StringWriter()
         def cli=Main.commandLine().setOut(new PrintWriter(out)).setErr(new PrintWriter(err))
-        int code=cli.execute(['--db',database().toString(),'archives','--name','s','--archive-temp-min-free','0','--quiet'] as String[])
+        int code=cli.execute(['--db',database().toString(),'archives','--name','s','--archive-temp-min-free','0','--archive-min-size-bytes','0','--quiet'] as String[])
         assert code==0 : err.toString()
         assert new JsonSlurper().parseText(out.toString()).phase=='COMPLETE'
         out.buffer.setLength(0)

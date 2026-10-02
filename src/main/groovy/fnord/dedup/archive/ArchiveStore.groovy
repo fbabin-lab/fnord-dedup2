@@ -96,6 +96,7 @@ class ArchiveStore {
         answer.putAll(db.rows('''SELECT count(*) AS root_archives,
              count(*) FILTER (WHERE status='COMPLETE') AS completed,
              count(*) FILTER (WHERE status='PARTIAL') AS with_errors,
+             count(*) FILTER (WHERE status='SKIPPED') AS skipped,
              count(*) FILTER (WHERE status IN ('PENDING','RUNNING')) AS pending,
              count(*) FILTER (WHERE duplicate) AS duplicate_roots,
              count(*) FILTER (WHERE retryable) AS retryable_roots
@@ -129,12 +130,12 @@ class ArchiveStore {
     }
 
     void eachMember(String resultId, Closure consumer) {
-        if (!(result(resultId).state in ['COMPLETE','PARTIAL'])) throw new IllegalStateException('Archive attempt is not finalized')
+        if (!(result(resultId).state in ['COMPLETE','PARTIAL','SKIPPED'])) throw new IllegalStateException('Archive attempt is not finalized')
         db.eachRow('SELECT * EXCLUDE(group_key,flavor,volume_slot) FROM archive_members WHERE result_id=? ORDER BY ordinal', [resultId] as Object[], consumer)
     }
 
     void eachVolume(String resultId, Closure consumer) {
-        if (!(result(resultId).state in ['COMPLETE','PARTIAL'])) throw new IllegalStateException('Archive attempt is not finalized')
+        if (!(result(resultId).state in ['COMPLETE','PARTIAL','SKIPPED'])) throw new IllegalStateException('Archive attempt is not finalized')
         db.eachRow('SELECT * FROM archive_volumes WHERE result_id=? ORDER BY ordinal', [resultId] as Object[], consumer)
     }
 

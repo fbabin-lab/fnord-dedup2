@@ -17,7 +17,8 @@ After `scan --discover-only` or a completed normal scan:
 ```bash
 DB="$HOME/scans.duckdb"
 ./bin/fnord-dedup2 --db "$DB" archives --name "scan-01" \
-  --archive-temp /fast-disk/fnord-temp
+  --archive-temp /fast-disk/fnord-temp \
+  --archive-min-size-bytes 1048576
 ```
 
 The database lock is exclusive across application processes, including report commands. Close/pause the active invocation before opening reports in another process.
@@ -38,7 +39,7 @@ Exit conventions are unchanged: 0 success, 1 configuration/execution failure, 2 
 
 The archive run has IDENTIFYING, ANALYZING, PAUSED, COMPLETE or COMPLETE_WITH_ERRORS. These are durable work phases, not process-liveness claims.
 
-Each root job has PENDING, RUNNING, COMPLETE or PARTIAL, with independent duplicate and retryable flags. COMPLETE means this attempt finished without reported native, resource, safety, child or I/O errors. It is not a forensic guarantee that every possible corruption has been detected.
+Each root job has PENDING, RUNNING, SKIPPED, COMPLETE or PARTIAL, with independent duplicate and retryable flags. SKIPPED means the logical archive set was below the configured minimum-size threshold and was intentionally not checksummed or extracted; it is not an error. COMPLETE means this attempt finished without reported native, resource, safety, child or I/O errors. It is not a forensic guarantee that every possible corruption has been detected.
 
 A content result has a UUID and state RUNNING, COMPLETE or PARTIAL. Only finalized results may be enumerated through archive-entries. Each member has an ordinal, so two archived files with the same pathname remain distinct.
 
@@ -92,7 +93,10 @@ Archive paths are never output paths. Regular contents use numeric filenames; sy
 | --archive-native-memory-bytes | 2,147,483,648 | Helper address-space limit, separate from Java/DuckDB. |
 | --archive-timeout-seconds | 3600 | Wall-clock limit per extractor invocation. |
 | --archive-max-volumes | 10,000 | Maximum physical volumes in one set. |
+| --archive-min-size-bytes | 0 | Skip logical archive sets smaller than this many compressed/source bytes. Multipart sizes are summed; nested archives use their recovered payload sizes. Zero disables the filter. |
 | --python | /usr/bin/python3 | Absolute Python executable path. |
+
+`--archive-min-size-bytes` is a strict lower bound: a set whose total size equals the threshold is processed; only smaller sets are skipped. The threshold applies to roots and nested archives and is included in cache-policy identity. Skipped archives remain visible in archive-list/status and do not create errors.
 
 Byte options use bytes, not suffix strings. Defaults are deliberately finite. Increase them explicitly for large archives. Free-space checks cannot reserve space against another process; use filesystem quotas for a hard host-wide limit. Raising depth/temp limits increases possible disk requirements.
 
@@ -108,7 +112,8 @@ import java.nio.file.Path
 
 Dedup.open(Path.of('/data/scans.duckdb')).withCloseable { d ->
     d.analyzeArchives('scan-01', new ArchiveOptions(
-        tempDirectory: Path.of('/fast/temp')
+        tempDirectory: Path.of('/fast/temp'),
+        minSizeBytes: 1024L * 1024
     ))
 
     // Keep only one ID here. Do not issue another query from this callback.

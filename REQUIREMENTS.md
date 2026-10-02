@@ -24,7 +24,7 @@ Nested archives use the same depth-first pipeline, including multipart grouping.
 
 Bounded attempt-generation batches remain non-authoritative until publication. Restart discards unfinished generations and replays the current archive; finalized child results survive. Cleanup validates ownership and leases, avoids links, and handles interruptions during extraction, initialization and cleanup.
 
-Enforce finite configurable depth, member count, native memory, wall-clock, temporary-byte and free-space limits. Archive member names are untrusted metadata, never output paths. Do not recreate/follow links or special files, use shells, or parse human-oriented filename tables. Document native-code isolation limits honestly.
+Enforce finite configurable depth, member count, native memory, wall-clock, temporary-byte and free-space limits. Provide an optional minimum logical archive-set size; sets below it are intentionally skipped without hashing/extraction or error, multipart sizes are summed, and the same policy applies to nested archives. Archive member names are untrusted metadata, never output paths. Do not recreate/follow links or special files, use shells, or parse human-oriented filename tables. Document native-code isolation limits honestly.
 
 Provide analysis/resume, status, streaming archive/member/volume/error reports, retry and force through CLI/API. Ordinary filesystem resume remains unchanged. Added volumes or source changes require a new named inventory. See docs/ARCHIVE_SPEC.md for the archive implementation contract.
 

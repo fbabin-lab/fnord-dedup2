@@ -10,7 +10,7 @@ Only one extractor runs at a time. Nested archives use the same processor, depth
 
 Every readable regular member gets metadata and SHA-256. A failed member does not erase valid siblings. Damaged bytes have a separate recovered hash, never a normal content hash. Links and special files have metadata only. Header corruption may prevent discovery of later members; do not claim complete coverage in that case.
 
-Exact archive identity is the physical SHA-256, or the versioned ordered multi-volume fingerprint. Canonical reuse requires compatible provider/policy, finalized reusable contents, and a compatible recursion context. Never reuse unknown/incomplete sets, transient failures, encryption failures or limit-capped results as complete results.
+Exact archive identity is the physical SHA-256, or the versioned ordered multi-volume fingerprint. Canonical reuse requires compatible provider/policy, finalized reusable contents, and a compatible recursion context. The minimum-size threshold is part of policy identity so a result that intentionally skipped small nested archives cannot be reused by a run that would process them. Never reuse unknown/incomplete sets, transient failures, encryption failures or limit-capped results as complete results.
 
 ## Deliberate implementation choices
 
@@ -20,9 +20,9 @@ Exact archive identity is the physical SHA-256, or the versioned ordered multi-v
 
 **Canonical result DAG.** Root occurrences (`archive_jobs`, `archive_inputs`) point to immutable result UUIDs. A result owns its `archive_members`, `archive_volumes`, errors and nested edges. Duplicates point directly to a result, never to another alias. Nested edges refer to source ordinals and canonical child results. This avoids duplicating millions of members for copied archives and keeps child results reusable after parent interruption.
 
-**Compact status model.** Root/result completion is COMPLETE or PARTIAL with duplicate/retryable/reusable flags and structured diagnostics. Distinct corruption, missing-volume, encryption, resource and operational reasons live in errors, rather than a large ambiguous lifecycle enumeration. Run phases are separately persisted.
+**Compact status model.** Root/result completion is COMPLETE or PARTIAL with duplicate/retryable/reusable flags and structured diagnostics. A separately configured minimum archive size may yield SKIPPED roots/results; this is an intentional policy outcome, not an error. Distinct corruption, missing-volume, encryption, resource and operational reasons live in errors, rather than a large ambiguous lifecycle enumeration. Run phases are separately persisted.
 
-**Finite safeguards.** Defaults are depth 32, one million headers, 100 GiB temporary budgets, 1 GiB free-space reserve and one hour per extractor. A limit never silently claims complete coverage and never produces a reusable cache. Password entry/repair are not part of v1.
+**Finite safeguards.** Defaults are depth 32, one million headers, 100 GiB temporary budgets, 1 GiB free-space reserve, one hour per extractor, and a disabled-by-default minimum archive size of 0 bytes. When configured, the minimum compares the summed physical size of a multipart root or the summed recovered payload size of a nested multipart set before hashing/extraction. A limit never silently claims complete coverage and never produces a reusable cache. Password entry/repair are not part of v1.
 
 ## Persistence and restart invariants
 

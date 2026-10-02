@@ -20,6 +20,7 @@ class ArchivesCommand extends NamedCommand {
     @Option(names='--archive-native-memory-bytes', defaultValue='2147483648') long nativeMemory
     @Option(names='--archive-timeout-seconds', defaultValue='3600') long timeout
     @Option(names='--archive-max-volumes', defaultValue='10000') int maxVolumes
+    @Option(names='--archive-min-size-bytes', defaultValue='0', description='Skip logical archive sets smaller than this many bytes; multipart sizes are summed. Applies to nested archives too.') long minSize
     @Option(names='--python', defaultValue='/usr/bin/python3') String python
     @Option(names='--retry-errors', description='Retry partial results, excluding them from cache reuse.') boolean retryErrors
     @Option(names='--force', description='Reprocess all root archives and bypass completed-result caches.') boolean force
@@ -27,7 +28,7 @@ class ArchivesCommand extends NamedCommand {
     @Override Integer call() {
         ArchiveOptions opts = new ArchiveOptions(tempDirectory:temp,maxDepth:maxDepth,maxMembers:maxFiles,
             maxExpandedBytes:maxExpanded,maxTempBytes:maxTemp,minFreeBytes:minFree,
-            nativeMemoryBytes:nativeMemory,timeoutSeconds:timeout,maxVolumes:maxVolumes,python:python,
+            nativeMemoryBytes:nativeMemory,timeoutSeconds:timeout,maxVolumes:maxVolumes,minSizeBytes:minSize,python:python,
             retryErrors:retryErrors,force:force)
         parent.withEngine { Dedup d -> parent.report(d.analyzeArchives(name,opts,parent.stop)) } as Integer
     }

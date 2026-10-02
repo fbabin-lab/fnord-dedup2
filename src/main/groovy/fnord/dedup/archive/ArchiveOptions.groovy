@@ -14,6 +14,7 @@ class ArchiveOptions {
     long nativeMemoryBytes = 2L * 1024 * 1024 * 1024
     long timeoutSeconds = 3600L
     int maxVolumes = 10000
+    long minSizeBytes = 0L
     boolean retryErrors = false
     boolean force = false
 
@@ -21,13 +22,14 @@ class ArchiveOptions {
         if (maxDepth < 0 || maxDepth > 128) throw new IllegalArgumentException('Archive depth must be 0..128; top-level depth is zero')
         if (maxMembers < 1 || maxExpandedBytes < 1 || maxTempBytes < 1 || minFreeBytes < 0 ||
             nativeMemoryBytes < 128L * 1024 * 1024 || timeoutSeconds < 1 || timeoutSeconds > 604800 ||
-            maxVolumes < 1 || maxVolumes > 100000) throw new IllegalArgumentException('Invalid archive resource limits')
+            maxVolumes < 1 || maxVolumes > 100000 || minSizeBytes < 0) throw new IllegalArgumentException('Invalid archive resource limits')
         if (!Path.of(python).isAbsolute()) throw new IllegalArgumentException('Python executable must be an absolute path')
         this
     }
 
     Map policy() {
         [protocol: 1, maxDepth: maxDepth, maxMembers: maxMembers, maxExpandedBytes: maxExpandedBytes,
-         maxTempBytes: maxTempBytes, nativeMemoryBytes: nativeMemoryBytes, maxVolumes: maxVolumes]
+         maxTempBytes: maxTempBytes, nativeMemoryBytes: nativeMemoryBytes, maxVolumes: maxVolumes,
+         minSizeBytes: minSizeBytes]
     }
 }
