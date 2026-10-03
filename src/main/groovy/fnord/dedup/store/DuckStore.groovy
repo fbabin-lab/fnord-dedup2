@@ -191,21 +191,27 @@ class DuckStore implements AutoCloseable {
         result
     }
 
-    void prepareCandidates(long id, boolean rehash) {
+    void prepareCandidates(long id, boolean rehash, boolean hashComplete) {
         transaction {
-            if (rehash) exec('DELETE FROM hashes WHERE scan_id=?', id)
             exec("DELETE FROM scan_errors WHERE scan_id=? AND phase='HASHING'", id)
             phase(id, 'HASHING')
         }
         exec('''CREATE OR REPLACE TEMP TABLE hash_candidates AS
+            WITH repeated_sizes AS (
+                SELECT size FROM entries WHERE scan_id=? AND kind='FILE'
+                GROUP BY size HAVING count(*)>1
+            )
             SELECT row_number() OVER (ORDER BY e.entry_id) AS sequence,
-                   e.entry_id,e.relative_path,e.size,e.modified_sec,e.modified_nano
-            FROM entries e JOIN
-                (SELECT size FROM entries WHERE scan_id=? AND kind='FILE'
-                 GROUP BY size HAVING count(*)>1) sizes ON sizes.size=e.size
-            WHERE e.scan_id=? AND e.kind='FILE' AND NOT EXISTS
-                (SELECT 1 FROM hashes h WHERE h.scan_id=e.scan_id AND h.entry_id=e.entry_id)
-            ORDER BY e.entry_id''', id, id)
+                   e.entry_id,e.relative_path,e.size,e.modified_sec,e.modified_nano,
+                   h.sha256 AS existing_sha256
+            FROM entries e
+            LEFT JOIN hashes h ON h.scan_id=e.scan_id AND h.entry_id=e.entry_id
+            LEFT JOIN repeated_sizes sizes ON sizes.size=e.size
+            WHERE e.scan_id=? AND e.kind='FILE' AND (
+                (? AND h.sha256 IS NOT NULL) OR
+                (h.sha256 IS NULL AND (? OR sizes.size IS NOT NULL))
+            )
+            ORDER BY e.entry_id''', id, id, rehash, hashComplete)
     }
 
     List<Map> candidates(long after, int limit) {
