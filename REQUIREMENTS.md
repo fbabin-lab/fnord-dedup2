@@ -4,7 +4,7 @@ The application is implemented in Groovy and its core filesystem functionality r
 
 ## Filesystem phases
 
-Pass one records directory/file paths, filename, type, byte size and modification time without reading contents. Inodes, permissions, ownership, allocated blocks and link counts are intentionally excluded. Pass two hashes only regular files whose size repeats within that scan, then reports matching size and full SHA-256.
+Pass one records directory/file paths, filename, type, byte size and modification time without reading contents. Inodes, permissions, ownership, allocated blocks and link counts are intentionally excluded. Pass two normally hashes only regular files whose size repeats within that scan, then reports matching size and full SHA-256. `--rehash` recomputes only entries with an existing saved hash and replaces the old digest only after successful validation. `--hash-complete` hashes every regular entry missing a hash regardless of size; combining both flags processes every regular file.
 
 Discovery resumes from durable directory work and atomic chunk checkpoints. Hashing persists completed checksums only; interrupted work may be recalculated. Source changes and metadata/read errors must be visible. The source tree is never modified. Resume does not refresh completed directories.
 
