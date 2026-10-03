@@ -35,9 +35,9 @@ final class Dedup implements AutoCloseable {
         resume(name, stop, discoverOnly)
     }
 
-    Map resume(String name, StopToken stop = new StopToken(), boolean discoverOnly = false, boolean rehash = false) {
+    Map resume(String name, StopToken stop = new StopToken(), boolean discoverOnly = false, boolean rehash = false, boolean hashComplete = false) {
         discover(name, stop)
-        if (!stop.cancelled && !discoverOnly) hash(name, stop, rehash)
+        if (!stop.cancelled && !discoverOnly) hash(name, stop, rehash, hashComplete)
         status(name)
     }
 
@@ -46,8 +46,8 @@ final class Dedup implements AutoCloseable {
         status(name)
     }
 
-    Map hash(String name, StopToken stop = new StopToken(), boolean rehash = false) {
-        HashEngine.run(store, store.scan(name), options.validate(), stop, progress, hasher, rehash)
+    Map hash(String name, StopToken stop = new StopToken(), boolean rehash = false, boolean hashComplete = false) {
+        HashEngine.run(store, store.scan(name), options.validate(), stop, progress, hasher, rehash, hashComplete)
         status(name)
     }
 
