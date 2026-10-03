@@ -195,18 +195,67 @@ class DedupTest {
         }
     }
 
-    @Test void rehashReplacesRatherThanDuplicatesSavedHashes() {
-        Path input = root(); (1..4).each { file(input, "f${it}") }
+    @Test void rehashRecomputesOnlyExistingHashesAndKeepsOldHashOnFailure() {
+        Path input = root()
+        file(input, 'pair-a', 'same')
+        file(input, 'pair-b', 'same')
+        file(input, 'unique', 'unique-length')
         CountingHasher counter = new CountingHasher()
         Dedup.open(db(), options()).withCloseable { Dedup d ->
             d.hasher = counter
             d.scan('redo', input)
-            assert counter.paths.size() == 4
-            d.resume('redo')
-            assert counter.paths.size() == 4
-            d.hash('redo', new StopToken(), true)
-            assert counter.paths.size() == 8
-            assert d.status('redo').hashes_completed == 4
+            assert counter.paths*.fileName*.toString().toSet() == ['pair-a','pair-b'].toSet()
+            assert d.status('redo').hashes_completed == 2
+            String before = d.store.rows("SELECT sha256 FROM hashes h JOIN entries e USING(scan_id,entry_id) WHERE e.filename='pair-a'")[0].sha256
+            counter.paths.clear()
+            d.hash('redo', new StopToken(), true, false)
+            assert counter.paths*.fileName*.toString().toSet() == ['pair-a','pair-b'].toSet()
+            assert d.status('redo').hashes_completed == 2
+            assert d.store.rows('SELECT count(*) AS n FROM hashes')[0].n == 2
+            d.hasher = new SelectiveFailingHasher('pair-a')
+            d.hash('redo', new StopToken(), true, false)
+            assert d.store.rows("SELECT sha256 FROM hashes h JOIN entries e USING(scan_id,entry_id) WHERE e.filename='pair-a'")[0].sha256 == before
+            assert d.status('redo').hashes_completed == 2
+        }
+    }
+
+    @Test void hashCompleteHashesEveryMissingRegularFileWithoutRehashingExistingOnes() {
+        Path input = root()
+        file(input, 'pair-a', 'same')
+        file(input, 'pair-b', 'same')
+        file(input, 'unique-a', 'unique-A')
+        file(input, 'unique-b', 'another unique value')
+        CountingHasher counter = new CountingHasher()
+        Dedup.open(db(), options()).withCloseable { Dedup d ->
+            d.hasher = counter
+            d.scan('complete', input)
+            assert d.status('complete').hashes_completed == 2
+            counter.paths.clear()
+            d.hash('complete', new StopToken(), false, true)
+            assert counter.paths*.fileName*.toString().toSet() == ['unique-a','unique-b'].toSet()
+            assert d.status('complete').hashes_completed == 4
+            counter.paths.clear()
+            d.hash('complete', new StopToken(), false, true)
+            assert counter.paths.empty
+            assert d.status('complete').hashes_completed == 4
+        }
+    }
+
+    @Test void rehashAndHashCompleteTogetherProcessEveryRegularFile() {
+        Path input = root()
+        file(input, 'pair-a', 'same')
+        file(input, 'pair-b', 'same')
+        file(input, 'unique', 'unique value')
+        CountingHasher counter = new CountingHasher()
+        Dedup.open(db(), options()).withCloseable { Dedup d ->
+            d.hasher = counter
+            d.scan('all', input)
+            assert d.status('all').hashes_completed == 2
+            counter.paths.clear()
+            d.hash('all', new StopToken(), true, true)
+            assert counter.paths*.fileName*.toString().toSet() == ['pair-a','pair-b','unique'].toSet()
+            assert d.status('all').hashes_completed == 3
+            assert d.store.rows('SELECT entry_id,count(*) AS n FROM hashes GROUP BY entry_id HAVING count(*)>1').empty
         }
     }
 
@@ -364,6 +413,14 @@ class DedupTest {
                 Files.setLastModifiedTime(path, FileTime.from(old.plusSeconds(1)))
             }
             value
+        }
+    }
+    static class SelectiveFailingHasher extends CountingHasher {
+        final String failingName
+        SelectiveFailingHasher(String failingName) { this.failingName = failingName }
+        @Override HashValue hash(Path path, StopToken stop, int bufferBytes) {
+            if (path.fileName.toString() == failingName) throw new IOException('Synthetic transient read failure')
+            super.hash(path, stop, bufferBytes)
         }
     }
     static class FailingHasher implements FileHasher {
