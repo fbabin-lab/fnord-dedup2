@@ -19,10 +19,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web-ui/package-lock.json
       - name: Native archive runtime and fixture tools
         run: sudo apt-get update && sudo apt-get install -y libarchive13t64 python3 zip p7zip-full
       - name: Build and unit/integration tests
-        run: ./gradlew --no-daemon test installDist distTar
+        run: ./gradlew --no-daemon test installDist distTar :web-api:bootJar
       - name: Verify build without optional archive runtime
         env:
           FNORD_LIBARCHIVE: /definitely/missing/libarchive.so
@@ -62,4 +67,10 @@ jobs:
         with:
           name: fnord-dedup2-linux
           path: build/distributions/*.tar
+          retention-days: 7
+      - name: Upload web application
+        uses: actions/upload-artifact@v4
+        with:
+          name: fnord-dedup2-web
+          path: web-api/build/libs/fnord-dedup2-web.jar
           retention-days: 7

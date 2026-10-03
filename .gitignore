@@ -6,3 +6,7 @@ build/
 *.duckdb.wal
 *.duckdb.lock
 *.duckdb.tmp/
+web-ui/node_modules/
+web-ui/dist/
+web-ui/.angular/
+**/__pycache__/

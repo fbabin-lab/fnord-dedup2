@@ -4,6 +4,8 @@ Duplicate-file analysis in **Groovy**, with a **CLI**, a **synchronous scripting
 
 The application never deletes, moves, hard-links, or rewrites source files. Container analysis writes only disposable temporary data.
 
+An optional [web explorer](docs/WEB_UI.md) is being built as a separate Spring Boot/Groovy module with an Angular UI. The first milestone reports database and schema status safely; the CLI remains the scanner.
+
 ## Platforms
 
 Core filesystem discovery, SHA-256 hashing, duplicate reports, cross-scan verification, database merge, CLI and Groovy scripting are supported on **Linux and Windows** with Java 21. Paths persisted in DuckDB use forward slashes on both platforms: C:/Data, //server/share and /data. Native filesystem I/O still uses java.nio.file.Path.
