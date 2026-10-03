@@ -45,4 +45,20 @@ class CliTest {
         assert runCli(['status', '--name', 'absent']).code == 1
         assert runCli(['scan', '--name', 'x', '--root', work.toString(), '--workers', '0']).code == 1
     }
+    @Test void hashModesAreAvailableFromCli() {
+        Path input = Files.createDirectory(work.resolve('hash-modes'))
+        Files.writeString(input.resolve('pair-a'), 'same')
+        Files.writeString(input.resolve('pair-b'), 'same')
+        Files.writeString(input.resolve('unique'), 'unique-length')
+        assert runCli(['scan','--name','modes','--root',input.toString(),'--discover-only','--quiet']).code == 0
+        assert runCli(['hash','--name','modes','--quiet']).code == 0
+        Map before = new JsonSlurper().parseText(runCli(['status','--name','modes']).out) as Map
+        assert before.hashes_completed == 2
+        assert runCli(['hash','--name','modes','--hash-complete','--quiet']).code == 0
+        Map complete = new JsonSlurper().parseText(runCli(['status','--name','modes']).out) as Map
+        assert complete.hashes_completed == 3
+        assert runCli(['hash','--name','modes','--rehash','--quiet']).code == 0
+        assert (new JsonSlurper().parseText(runCli(['status','--name','modes']).out) as Map).hashes_completed == 3
+    }
+
 }
