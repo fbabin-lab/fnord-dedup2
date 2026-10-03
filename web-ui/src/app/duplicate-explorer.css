@@ -1,0 +1,22 @@
+.hint { color: #677f89; font-size: 12px; line-height: 1.5; }
+.scan-picker { display: grid; grid-template-columns: minmax(220px, 1fr) 1fr; gap: 24px; padding-bottom: 12px; }
+.scan-filter { display: flex; align-items: end; gap: 10px; margin-bottom: 12px; }
+.scan-filter label { flex: 1; }
+.scan-pagination { padding: 10px 0; }
+.selected-scans { display: flex; flex-wrap: wrap; gap: 8px; max-height: 190px; overflow: auto; }
+.selected-scans button { font-size: 12px; }
+.reference-note { padding: 15px 0; font-size: 12px; }
+.reference-note span { display: block; margin-top: 6px; }
+.coverage { margin-top: 18px; }
+.coverage p { margin: 4px 0; }
+.duplicate-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
+.duplicate-metrics div { display: grid; gap: 8px; background: white; border: 1px solid #dce5e8; border-radius: 9px; padding: 17px 18px; }
+.duplicate-metrics span { color: #607984; font-size: 11px; }
+.duplicate-metrics strong { color: #1b3945; font-size: 22px; overflow-wrap: anywhere; }
+.selected-group td { background: #edf8f4; }
+.occurrence-panel { margin-top: 20px; padding: 18px; scroll-margin-top: 16px; }
+.occurrence-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+h2 { font-size: 17px; margin: 0; }
+.hash-text { font: 11px ui-monospace, monospace; overflow-wrap: anywhere; color: #56727d; }
+button:focus-visible { outline: 3px solid #65cbb5; outline-offset: 2px; }
+@media (max-width: 650px) { .scan-picker, .duplicate-metrics { grid-template-columns: 1fr; } .scan-filter { flex-wrap: wrap; } }

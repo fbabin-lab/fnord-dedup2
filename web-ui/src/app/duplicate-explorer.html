@@ -1,0 +1,162 @@
+<form class="search-form" (submit)="apply($event)">
+  <details open>
+    <summary>{{ copy.scanSelection }}</summary>
+    <p class="hint">{{ copy.chooseDuplicateScans }}</p>
+    <div class="scan-picker">
+      <div>
+        <div class="scan-filter">
+          <label>{{ copy.filterName }}<input type="search" name="scanFilter" [(ngModel)]="scanNameFilter"></label>
+          <button type="button" class="secondary" (click)="findScans()" [disabled]="scanLoading()">{{ copy.findScans }}</button>
+        </div>
+        <label>{{ copy.scans }}
+          <select multiple [attr.aria-label]="copy.scanSelection" (change)="selectScans($event)">
+            @for (scan of scans()?.items ?? []; track scan.scanId) {
+              <option [value]="scan.scanId" [selected]="form.scanIds.includes(scan.scanId)">{{ scan.name }} · {{ scan.phase }}</option>
+            }
+          </select>
+        </label>
+        <div class="pagination scan-pagination">
+          <button type="button" class="secondary" (click)="previousScans()" [disabled]="scanLoading() || !canPreviousScans()">{{ copy.previous }}</button>
+          <span>{{ scans()?.items?.length ?? 0 }} {{ copy.onPage }}</span>
+          <button type="button" class="secondary" (click)="nextScans()" [disabled]="scanLoading() || !scans()?.page?.hasMore">{{ copy.next }}</button>
+        </div>
+      </div>
+      <div>
+        <p class="hint">{{ form.scanIds.length }} {{ copy.selectedScanCount }}</p>
+        <div class="selected-scans">
+          @for (id of form.scanIds; track id) {
+            <button type="button" class="secondary" (click)="removeScan(id)" [disabled]="id === initialScanId() && !!initialEntryId()"
+              [attr.aria-label]="copy.removeScan + ': ' + scanLabel(id)">{{ scanLabel(id) }} ×</button>
+          }
+        </div>
+      </div>
+    </div>
+    @if (scanProblem(); as issue) { <p class="inline-error" role="alert">{{ issue.message }}</p> }
+    @if (initialEntryId()) {
+      <div class="reference-note">
+        <strong>{{ copy.referenceFile }}:</strong>
+        <span class="path-text">{{ results()?.reference?.relativePath || (copy.scanLabel + ' ' + initialScanId() + ' / ' + initialEntryId()) }}</span>
+        <p class="hint">{{ copy.referenceScopeHint }}</p>
+        <button type="button" class="secondary" (click)="clearReference.emit(initialScanId()!)">{{ copy.clearReference }}</button>
+      </div>
+    }
+  </details>
+
+  <details open>
+    <summary>{{ copy.duplicateGroups }}</summary>
+    <div class="filter-grid">
+      <label class="wide">{{ copy.groupMode }}<select name="mode" [(ngModel)]="form.mode">
+        <option value="ANY">{{ copy.allSelectedGroups }}</option>
+        <option value="ACROSS_SCANS">{{ copy.acrossSelectedOnly }}</option>
+      </select></label>
+      <label>{{ copy.minimumOccurrences }}<input type="number" name="minOccurrences" min="2" step="1" [(ngModel)]="form.minOccurrences"></label>
+      <label>{{ copy.minimumScans }}<input type="number" name="minScans" min="1" max="1000" step="1" [(ngModel)]="form.minScans"></label>
+      <label>{{ copy.minimumSize }}<input type="text" name="sizeMin" [(ngModel)]="form.sizeMin" placeholder="10 MiB"></label>
+      <label>{{ copy.maximumSize }}<input type="text" name="sizeMax" [(ngModel)]="form.sizeMax" placeholder="2 GiB"></label>
+      <label>{{ copy.modifiedAfter }}<input type="datetime-local" name="modifiedAfter" [(ngModel)]="form.modifiedAfter"></label>
+      <label>{{ copy.modifiedBefore }}<input type="datetime-local" name="modifiedBefore" [(ngModel)]="form.modifiedBefore"></label>
+    </div>
+  </details>
+
+  <details>
+    <summary>{{ copy.namesAndPaths }}</summary>
+    <div class="filter-grid">
+      <label>{{ copy.nameMatch }}<select name="nameOperator" [(ngModel)]="form.nameOperator">
+        <option value="CONTAINS">{{ copy.contains }}</option><option value="STARTS_WITH">{{ copy.startsWith }}</option>
+        <option value="ENDS_WITH">{{ copy.endsWith }}</option><option value="EXACT">{{ copy.exact }}</option>
+        <option value="GLOB">{{ copy.glob }}</option><option value="REGEX">{{ copy.regex }}</option>
+      </select></label>
+      <label class="wide">{{ copy.nameValue }}<input type="text" name="nameValue" [(ngModel)]="form.nameValue"></label>
+      <label class="check"><input type="checkbox" name="caseSensitive" [(ngModel)]="form.caseSensitive">{{ copy.caseSensitive }}</label>
+      <label>{{ copy.pathContains }}<input type="text" name="pathContains" [(ngModel)]="form.pathContains"></label>
+      <label>{{ copy.pathUnder }}<input type="text" name="pathUnder" [(ngModel)]="form.pathUnder"></label>
+      <label>{{ copy.extensions }}<input type="text" name="extensions" [(ngModel)]="form.extensions" placeholder="txt, jpg"></label>
+      <label>{{ copy.errorFilter }}<select name="errorState" [(ngModel)]="form.errorState">
+        <option value="ANY">{{ copy.any }}</option><option value="HAS">{{ copy.withErrors }}</option><option value="NONE">{{ copy.withoutErrors }}</option>
+      </select></label>
+      <label class="wide">{{ copy.excludeDirectories }}<textarea name="pathExcludes" rows="2" [(ngModel)]="form.pathExcludes" [placeholder]="copy.onePathPerLine"></textarea></label>
+    </div>
+  </details>
+
+  <p class="hint">{{ copy.groupFilterHint }}</p>
+  <div class="search-actions">
+    <label>{{ copy.sortBy }}<select name="sortField" [(ngModel)]="form.sortField">
+      <option value="SIZE">{{ copy.size }}</option><option value="OCCURRENCES">{{ copy.duplicateOccurrences }}</option>
+      <option value="SCANS">{{ copy.scansPerGroup }}</option><option value="OBSERVED_BYTES">{{ copy.observedBytes }}</option>
+    </select></label>
+    <label>{{ copy.direction }}<select name="sortDirection" [(ngModel)]="form.sortDirection">
+      <option value="ASC">{{ copy.ascending }}</option><option value="DESC">{{ copy.descending }}</option>
+    </select></label>
+    <label>{{ copy.pageSize }}<select name="limit" [(ngModel)]="form.limit">
+      <option [ngValue]="50">50</option><option [ngValue]="100">100</option><option [ngValue]="250">250</option><option [ngValue]="500">500</option>
+    </select></label>
+    <button type="submit" [disabled]="loading()">{{ copy.applyDuplicateFilters }}</button>
+  </div>
+</form>
+
+@if (loading()) { <p class="message" role="status">{{ copy.loading }}</p> }
+@if (problem(); as issue) { <p class="message error" role="alert"><strong>{{ issue.code }}</strong> {{ issue.message }}</p> }
+
+@if (results(); as result) {
+  <div class="coverage" [class.attention]="result.coverage.unhashedFiles > 0 || result.coverage.incompleteScans > 0 || result.coverage.scanErrors > 0">
+    <p>{{ result.coverage.hashedFiles }} / {{ result.coverage.files }} {{ copy.savedHashCoverage }}</p>
+    @if (result.coverage.unhashedFiles) { <p>{{ result.coverage.unhashedFiles }} {{ copy.unhashedCount }}</p> }
+    @if (result.coverage.incompleteScans || result.coverage.scanErrors) { <p>{{ copy.incompleteDuplicateWarning }}</p> }
+  </div>
+  <p class="hint">{{ copy.duplicateScopeWarning }}</p>
+  <section class="duplicate-metrics" [attr.aria-label]="copy.duplicateGroups">
+    <div><span>{{ copy.duplicateGroups }}</span><strong>{{ result.summary.groups }}</strong></div>
+    <div><span>{{ copy.duplicateOccurrences }}</span><strong>{{ result.summary.occurrences }}</strong></div>
+    <div><span>{{ copy.observedBytes }}</span><strong>{{ formatBytes(result.summary.observedBytes) }}</strong></div>
+  </section>
+  <section class="panel results-panel">
+    <div class="table-wrap"><table>
+      <thead><tr><th>{{ copy.samplePath }}</th><th class="number">{{ copy.size }}</th><th class="number">{{ copy.duplicateOccurrences }}</th>
+        <th class="number">{{ copy.scansPerGroup }}</th><th class="number">{{ copy.matchingOccurrences }}</th><th class="number">{{ copy.observedBytes }}</th><th>{{ copy.actions }}</th></tr></thead>
+      <tbody>
+        @for (group of result.items; track group.groupId) {
+          <tr [class.selected-group]="selectedGroup()?.groupId === group.groupId">
+            <td class="path-text">{{ group.samplePath }}</td><td class="number" [title]="group.size + ' ' + copy.bytes">{{ formatBytes(group.size) }}</td>
+            <td class="number">{{ group.occurrences }}</td><td class="number">{{ group.scanCount }}</td><td class="number">{{ group.matchingOccurrences }}</td>
+            <td class="number">{{ formatBytes(group.observedBytes) }}</td><td><button type="button" class="text-action" (click)="openGroup(group)"
+              aria-controls="duplicate-occurrences" [attr.aria-expanded]="selectedGroup()?.groupId === group.groupId">{{ copy.viewOccurrences }}</button></td>
+          </tr>
+        } @empty { <tr><td colspan="7" class="empty">{{ copy.noDuplicateGroups }}</td></tr> }
+      </tbody>
+    </table></div>
+    <div class="pagination">
+      <button type="button" class="secondary" (click)="previous()" [disabled]="loading() || !canPrevious()">{{ copy.previous }}</button>
+      <span>{{ result.items.length }} {{ copy.onPage }}</span>
+      <button type="button" class="secondary" (click)="next()" [disabled]="loading() || !result.page.hasMore">{{ copy.next }}</button>
+    </div>
+  </section>
+}
+
+@if (selectedGroup(); as group) {
+  <section id="duplicate-occurrences" class="panel occurrence-panel" [attr.aria-label]="copy.groupOccurrences">
+    <div class="occurrence-heading"><h2>{{ copy.groupOccurrences }}</h2><button type="button" class="secondary" (click)="closeGroup()">{{ copy.close }}</button></div>
+    <p class="hash-text">{{ copy.sha256 }}: {{ group.sha256 }}</p>
+    <p class="hint">{{ copy.allOccurrencesHint }}</p>
+    @if (occurrenceLoading()) { <p class="message" role="status">{{ copy.loading }}</p> }
+    @if (occurrenceProblem(); as issue) { <p class="message error" role="alert">{{ issue.message }}</p> }
+    @if (occurrences(); as listing) {
+      <div class="table-wrap"><table>
+        <thead><tr><th>{{ copy.scanLabel }}</th><th>{{ copy.path }}</th><th>{{ copy.modified }}</th><th>{{ copy.matchesFilters }}</th><th>{{ copy.actions }}</th></tr></thead>
+        <tbody>
+          @for (item of listing.items; track item.scanId + ':' + item.entryId) {
+            <tr><td><button type="button" class="text-action" (click)="scanOpen.emit(item.scanId!)">{{ item.scanName }}</button></td>
+              <td class="path-text">{{ item.path }} @if (item.hasError) { <span class="error-flag">{{ copy.hasError }}</span> }</td>
+              <td>{{ formatModified(item) }}</td><td>{{ item.matchesFilters ? copy.matchesFilters : copy.outsideFilters }}</td>
+              <td class="actions"><button type="button" class="text-action" (click)="entryOpen.emit(item)">{{ copy.details }}</button>
+                <button type="button" class="text-action" (click)="openContainingDirectory(item)">{{ copy.containingDirectory }}</button></td></tr>
+          }
+        </tbody>
+      </table></div>
+      <div class="pagination">
+        <button type="button" class="secondary" (click)="previousOccurrences()" [disabled]="occurrenceLoading() || !canPreviousOccurrences()">{{ copy.previous }}</button>
+        <span>{{ listing.items.length }} / {{ listing.group.occurrences }} {{ copy.duplicateOccurrences }}</span>
+        <button type="button" class="secondary" (click)="nextOccurrences()" [disabled]="occurrenceLoading() || !listing.page.hasMore">{{ copy.next }}</button>
+      </div>
+    }
+  </section>
+}
