@@ -125,17 +125,19 @@ class ScanCommand extends NamedCommand {
 @Command(name='resume', mixinStandardHelpOptions=true, description='Resume saved discovery/hashing; reuse committed checksums.')
 class ResumeCommand extends NamedCommand {
     @Option(names='--discover-only', description='Resume discovery without starting hashing.') boolean discoverOnly
-    @Option(names='--rehash', description='Discard saved checksums and recompute candidates after discovery.') boolean rehash
+    @Option(names='--rehash', description='Recompute files that already have saved hashes; successful results replace the old hashes.') boolean rehash
+    @Option(names='--hash-complete', description='Hash every regular file still missing a saved hash, even when its size is unique.') boolean hashComplete
     @Override Integer call() {
-        parent.withEngine { Dedup d -> parent.report(d.resume(name, parent.stop, discoverOnly, rehash)) } as Integer
+        parent.withEngine { Dedup d -> parent.report(d.resume(name, parent.stop, discoverOnly, rehash, hashComplete)) } as Integer
     }
 }
 
-@Command(name='hash', mixinStandardHelpOptions=true, description='Hash pending same-size candidates after completed discovery.')
+@Command(name='hash', mixinStandardHelpOptions=true, description='Hash files after completed discovery. Default: missing same-size duplicate candidates only.')
 class HashCommand extends NamedCommand {
-    @Option(names='--rehash', description='Discard all saved checksums for this scan before hashing.') boolean rehash
+    @Option(names='--rehash', description='Recompute files that already have saved hashes; successful results replace the old hashes.') boolean rehash
+    @Option(names='--hash-complete', description='Hash every regular file still missing a saved hash, even when its size is unique.') boolean hashComplete
     @Override Integer call() {
-        parent.withEngine { Dedup d -> parent.report(d.hash(name, parent.stop, rehash)) } as Integer
+        parent.withEngine { Dedup d -> parent.report(d.hash(name, parent.stop, rehash, hashComplete)) } as Integer
     }
 }
 
