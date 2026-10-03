@@ -1,0 +1,11 @@
+.tree-title { font-size: 11px; font-weight: 700; color: #59737e; text-transform: uppercase;
+  letter-spacing: .08em; padding: 4px 8px 12px; }
+.tree-row { display: flex; align-items: center; min-height: 31px; gap: 2px; }
+button { background: transparent; border: 0; color: #34515c; cursor: pointer; }
+.tree-toggle { flex: none; width: 23px; padding: 4px; font-size: 15px; }
+.tree-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  text-align: left; flex: 1; padding: 6px 4px; border-radius: 5px; font-size: 12px; }
+.tree-name.current { background: #ddf1e9; color: #116a55; font-weight: 700; }
+.tree-more { font-size: 11px; color: #116a55; }
+button:focus-visible { outline: 2px solid #2ba989; outline-offset: 1px; }
+.tree-error { font-size: 11px; color: #a33d30; padding: 5px 8px; }

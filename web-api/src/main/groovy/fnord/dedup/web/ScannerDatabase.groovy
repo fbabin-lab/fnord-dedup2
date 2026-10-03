@@ -11,11 +11,13 @@ import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.ResultSet
 import java.sql.SQLException
+import java.util.concurrent.locks.ReentrantLock
 
 /** One bounded request owns the scanner lock and a read-only connection, then closes both. */
 @Service
 class ScannerDatabase {
     final String configuredPath
+    private final ReentrantLock localReadLock = new ReentrantLock(true)
 
     ScannerDatabase(@Value('${dedup.web.database:}') String configuredPath) {
         this.configuredPath = configuredPath?.trim()
@@ -42,28 +44,37 @@ class ScannerDatabase {
 
     def withConnection(Closure action) {
         Path path = scannerPath()
+        // One web process may receive simultaneous requests. Serialize its own reads
+        // before taking the same exclusive sidecar lock used by CLI writers.
+        localReadLock.lock()
         DatabaseLock lock
         try {
-            lock = new DatabaseLock(Path.of(path.toString() + '.lock'))
-        } catch (IllegalStateException inUse) {
-            throw new ApiFailure('DATABASE_LOCKED', HttpStatus.LOCKED,
-                'The scan database is currently in use by fnord-dedup2.', inUse)
-        } catch (IOException error) {
-            throw new ApiFailure('DATABASE_OPEN_FAILED', HttpStatus.SERVICE_UNAVAILABLE,
-                'The database lock could not be opened.', error)
-        }
-
-        try {
+            try {
+                lock = new DatabaseLock(Path.of(path.toString() + '.lock'))
+            } catch (IllegalStateException inUse) {
+                throw new ApiFailure('DATABASE_LOCKED', HttpStatus.LOCKED,
+                    'The scan database is currently in use by fnord-dedup2.', inUse)
+            } catch (IOException error) {
+                throw new ApiFailure('DATABASE_OPEN_FAILED', HttpStatus.SERVICE_UNAVAILABLE,
+                    'The database lock could not be opened.', error)
+            }
             Properties properties = new Properties()
             properties.setProperty('duckdb.read_only', 'true')
-            DriverManager.getConnection('jdbc:duckdb:' + path, properties).withCloseable { Connection connection ->
-                action.call(connection, path)
+            Connection connection
+            try {
+                connection = DriverManager.getConnection('jdbc:duckdb:' + path, properties)
+            } catch (SQLException error) {
+                throw new ApiFailure('DATABASE_OPEN_FAILED', HttpStatus.SERVICE_UNAVAILABLE,
+                    'The scan database could not be opened read-only.', error)
             }
-        } catch (SQLException error) {
-            throw new ApiFailure('DATABASE_OPEN_FAILED', HttpStatus.SERVICE_UNAVAILABLE,
-                'The scan database could not be opened read-only.', error)
+            try {
+                connection.withCloseable { action.call(connection, path) }
+            } catch (SQLException error) {
+                throw new ApiFailure('DATABASE_QUERY_FAILED', HttpStatus.SERVICE_UNAVAILABLE,
+                    'The scan database query could not be completed.', error)
+            }
         } finally {
-            lock.close()
+            try { lock?.close() } finally { localReadLock.unlock() }
         }
     }
 
