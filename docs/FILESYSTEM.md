@@ -77,9 +77,17 @@ Discovery commits bounded chunks, together with a durable directory queue and ch
 
 Hashing stores **only completed checksums**. There are no durable per-file pending/running/failed checksum statuses. On resume, committed hashes are reused and remaining candidates are recalculated. In-flight or uncommitted hashes can be lost and recomputed, intentionally.
 
+Hash candidate modes:
+- default: only missing hashes for sizes repeated within the scan;
+- `--rehash`: only entries that already have a saved hash;
+- `--hash-complete`: every regular entry that is missing a saved hash, regardless of size uniqueness;
+- both flags: every regular entry, replacing existing hashes and filling missing ones.
+
+Rehash never removes the old digest before the new file observation has passed the normal before/after metadata and byte-count validation.
+
 DuckDB transactions and WAL are left enabled. `SIGKILL` bypasses graceful shutdown, but committed database work is recovered and unfinished work is replayed on the next invocation. Keep the `.duckdb` file and any adjacent `.wal` together after a crash. Do not delete a WAL or copy a live database. This is not a guarantee against storage corruption, a filesystem that violates durability, or a broken disk.
 
-A source tree should remain reasonably stable across pauses. **Resume is not a refresh.** It does not revisit completed directories to find newly added files. Create a new named scan to obtain a new inventory. `hash --rehash` discards saved hashes for the existing inventory; it does not rediscover paths.
+A source tree should remain reasonably stable across pauses. **Resume is not a refresh.** It does not revisit completed directories to find newly added files. Create a new named scan to obtain a new inventory. `hash --rehash` recomputes files that already have saved hashes; a successful validated digest atomically replaces the old value, while a failed rehash leaves the prior saved digest intact. It does not rediscover paths.
 
 ## Inspect results
 
