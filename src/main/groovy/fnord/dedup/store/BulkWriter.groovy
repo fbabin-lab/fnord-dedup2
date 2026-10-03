@@ -19,6 +19,7 @@ final class BulkWriter implements AutoCloseable {
     private final Closure progress
     private final Map<String, DuckDBAppender> appenders = new LinkedHashMap<>()
     private final List<Long> completedDirectories = new ArrayList<>()
+    private final List<List<Object>> replacementHashes = new ArrayList<>()
     long nextEntryId
     private long rowsInTransaction = 0L
     private long entriesWritten = 0L
@@ -89,9 +90,13 @@ final class BulkWriter implements AutoCloseable {
         dirty = true
     }
 
-    void hash(long entryId, String hex) {
-        DuckDBAppender a = appender('hashes')
-        a.beginRow(); a.append(scanId); a.append(entryId); a.append(hex); a.endRow()
+    void hash(long entryId, String hex, boolean replaceExisting = false) {
+        if (replaceExisting) {
+            replacementHashes.add([entryId, hex] as List<Object>)
+        } else {
+            DuckDBAppender a = appender('hashes')
+            a.beginRow(); a.append(scanId); a.append(entryId); a.append(hex); a.endRow()
+        }
         hashesWritten++
         rowsInTransaction++
         dirty = true
@@ -123,6 +128,18 @@ final class BulkWriter implements AutoCloseable {
     void checkpoint(Long activeDirectory) {
         if (!dirty) return
         closeAppenders()
+        if (!replacementHashes.isEmpty()) {
+            store.connection.prepareStatement('UPDATE hashes SET sha256=? WHERE scan_id=? AND entry_id=?').withCloseable { statement ->
+                for (List<Object> replacement : replacementHashes) {
+                    statement.setString(1, replacement[1] as String)
+                    statement.setLong(2, scanId)
+                    statement.setLong(3, replacement[0] as long)
+                    statement.addBatch()
+                }
+                int[] counts = statement.executeBatch()
+                if (counts.any { it == 0 }) throw new IllegalStateException('Saved hash disappeared during rehash')
+            }
+        }
         if (stage == 'discovery') {
             if (!completedDirectories.isEmpty()) {
                 // Values are internal long IDs, never SQL from a user or filename.
@@ -135,6 +152,7 @@ final class BulkWriter implements AutoCloseable {
         }
         store.connection.commit()
         completedDirectories.clear()
+        replacementHashes.clear()
         rowsInTransaction = 0L
         dirty = false
         activateTransaction()
