@@ -10,13 +10,13 @@ import java.util.concurrent.atomic.AtomicInteger
 /** Size candidates are materialized once in DuckDB, then consumed in bounded pages. */
 final class HashEngine {
     static void run(DuckStore store, Map scan, ScanOptions options, StopToken stop,
-                    Closure progress, FileHasher hasher, boolean rehash) {
+                    Closure progress, FileHasher hasher, boolean rehash, boolean hashComplete) {
         if (scan.phase == 'DISCOVERING') throw new IllegalStateException('Discovery must finish before hashing; use resume')
         if (hasher.algorithm() != 'SHA-256') throw new IllegalArgumentException('This schema accepts SHA-256 providers only')
         if (stop.cancelled) return
         long scanId = scan.scan_id as long
         String storedRoot = scan.root as String
-        store.prepareCandidates(scanId, rehash)
+        store.prepareCandidates(scanId, rehash, hashComplete)
         AtomicInteger threadNumber = new AtomicInteger()
         ExecutorService pool = Executors.newFixedThreadPool(options.workers, { Runnable runnable ->
             Thread thread = new Thread(runnable, 'dedup-hash-' + threadNumber.incrementAndGet())
@@ -46,7 +46,7 @@ final class HashEngine {
                         inFlight--
                         if (!result.cancelled) {
                             if (result.error != null) writer.error('HASHING', result.relative_path as String, result.error as String)
-                            else writer.hash(result.entry_id as long, result.sha256 as String)
+                            else writer.hash(result.entry_id as long, result.sha256 as String, result.existing_sha256 != null)
                         }
                     }
                     writer.maybeCheckpoint(null)
