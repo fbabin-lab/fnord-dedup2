@@ -15,11 +15,15 @@ class WebApplication {
         List<String> translated = []
         for (int i = 0; i < args.length; i++) {
             String argument = args[i]
-            if (argument == '--db' || argument == '--port') {
+            if (argument == '--db' || argument == '--port' || argument == '--state-db') {
                 if (++i >= args.length) throw new IllegalArgumentException("Missing value for ${argument}")
-                translated.add("--${argument == '--db' ? 'dedup.web.database' : 'server.port'}=${args[i]}".toString())
+                String property = argument == '--db' ? 'dedup.web.database' :
+                    argument == '--state-db' ? 'dedup.web.state-database' : 'server.port'
+                translated.add("--${property}=${args[i]}".toString())
             } else if (argument.startsWith('--db=')) {
                 translated.add('--dedup.web.database=' + argument.substring(5))
+            } else if (argument.startsWith('--state-db=')) {
+                translated.add('--dedup.web.state-database=' + argument.substring(11))
             } else if (argument.startsWith('--port=')) {
                 translated.add('--server.port=' + argument.substring(7))
             } else {

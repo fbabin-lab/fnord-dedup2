@@ -1,6 +1,8 @@
 # Architecture and extension contract
 
-The optional web-api module serves the Angular production build and queries scanner DuckDB under the CLI sidecar lock. Each request opens a read-only JDBC connection, validates schema versions, returns bounded rows or aggregate counts, and closes the connection. Concurrent requests in one web process serialize before taking the exclusive lock. No source file is opened and no scanner table is written. The web interface currently covers scan summaries, directory navigation, file details, and filesystem errors; see docs/WEB_UI.md.
+The optional web-api module serves the Angular production build and queries scanner DuckDB under the CLI sidecar lock. Each request opens a read-only JDBC connection, applies finite memory/thread settings, validates schema versions, returns bounded rows or aggregate counts, and closes the connection. Concurrent requests in one web process serialize before taking the exclusive lock. File-search requests normalize and validate every field before generating SQL; caller values are parameters, while sort/pattern fragments come only from closed enums. Keyset cursors bind to the normalized filter and sort contract. No source file is opened and no scanner table is written.
+
+Saved-search definitions use a separate web-owned DuckDB file with its own schema and process-lifetime sidecar lock. Rows are partitioned by the canonical scanner database path. Startup configuration rejects a state path that aliases scanner data. The scanner connection remains read-only and never initializes web tables; see docs/WEB_UI.md.
 
 ## Layers
 

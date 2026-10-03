@@ -17,6 +17,10 @@ import java.util.concurrent.locks.ReentrantLock
 @Service
 class ScannerDatabase {
     final String configuredPath
+    @Value('${dedup.web.memory-limit:512MB}')
+    String memoryLimit = '512MB'
+    @Value('${dedup.web.database-threads:2}')
+    int databaseThreads = 2
     private final ReentrantLock localReadLock = new ReentrantLock(true)
 
     ScannerDatabase(@Value('${dedup.web.database:}') String configuredPath) {
@@ -26,6 +30,9 @@ class ScannerDatabase {
     Map<String, Object> registration() {
         [path: configuredPath, configured: !!configuredPath, readOnly: true]
     }
+
+    /** Stable identity used to keep web-owned state separate for each scanner database. */
+    String sourceKey() { scannerPath().toString() }
 
     Map<String, Object> status() {
         withConnection { Connection connection, Path path ->
@@ -68,13 +75,28 @@ class ScannerDatabase {
                     'The scan database could not be opened read-only.', error)
             }
             try {
-                connection.withCloseable { action.call(connection, path) }
+                connection.withCloseable {
+                    configureSession(connection)
+                    action.call(connection, path)
+                }
             } catch (SQLException error) {
                 throw new ApiFailure('DATABASE_QUERY_FAILED', HttpStatus.SERVICE_UNAVAILABLE,
                     'The scan database query could not be completed.', error)
             }
         } finally {
             try { lock?.close() } finally { localReadLock.unlock() }
+        }
+    }
+
+    private void configureSession(Connection connection) {
+        if (!(memoryLimit ==~ /(?i)[1-9][0-9]*(MB|GB)/) ||
+            databaseThreads < 1 || databaseThreads > 16) {
+            throw new ApiFailure('INVALID_SERVER_CONFIGURATION', HttpStatus.INTERNAL_SERVER_ERROR,
+                'Web database tuning must use a positive MB/GB memory limit and 1..16 threads.')
+        }
+        connection.createStatement().withCloseable { statement ->
+            statement.execute("SET memory_limit='${memoryLimit.toUpperCase(Locale.ROOT)}'")
+            statement.execute("SET threads=${databaseThreads}")
         }
     }
 

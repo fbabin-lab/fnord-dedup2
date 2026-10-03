@@ -1,0 +1,171 @@
+<section class="search-toolbar panel">
+  <div class="saved-row">
+    <label>{{ copy.savedSearches }}
+      <select [value]="selectedSavedId() || ''" (change)="loadSaved($event)">
+        <option value="">{{ copy.unsavedSearch }}</option>
+        @for (item of saved(); track item.id) { <option [value]="item.id">{{ item.name }}</option> }
+      </select>
+    </label>
+    <label>{{ copy.savedName }}
+      <input [(ngModel)]="savedName" maxlength="120" [placeholder]="copy.savedNamePlaceholder">
+    </label>
+    <label class="saved-description">{{ copy.descriptionLabel }}
+      <input [(ngModel)]="savedDescription" maxlength="2000" [placeholder]="copy.savedDescriptionPlaceholder">
+    </label>
+    <div class="saved-actions">
+      <button type="button" class="secondary" (click)="saveNew()" [disabled]="stateBusy()">{{ copy.saveNew }}</button>
+      <button type="button" class="secondary" (click)="updateSaved()"
+        [disabled]="stateBusy() || !selectedSavedId()">{{ copy.updateSaved }}</button>
+      <button type="button" class="danger" (click)="deleteSaved()"
+        [disabled]="stateBusy() || !selectedSavedId()">{{ copy.deleteSaved }}</button>
+    </div>
+  </div>
+  @if (savedProblem(); as issue) {
+    <p class="inline-error" role="alert"><strong>{{ issue.code }}</strong> {{ issue.message }}</p>
+  }
+</section>
+
+<form class="search-form" (submit)="apply($event)">
+  <details open>
+    <summary>{{ copy.searchScope }}</summary>
+    <div class="filter-grid">
+      <label class="wide">{{ copy.scanSelection }}
+        <select multiple size="5" (change)="selectScans($event)">
+          @for (scan of scans(); track scan.scanId) {
+            <option [value]="scan.scanId" [selected]="form.scanIds.includes(scan.scanId)">{{ scan.name }} · {{ scan.root }}</option>
+          }
+        </select>
+        <small>{{ copy.noScanSelection }}</small>
+      </label>
+      <label class="check"><input type="checkbox" [(ngModel)]="form.directoryEnabled" name="directoryEnabled"
+        (change)="scheduleSearch()"> {{ copy.directoryScope }}</label>
+      @if (form.directoryEnabled) {
+        <label>{{ copy.directoryScanId }}
+          <input inputmode="numeric" [(ngModel)]="form.directoryScanId" name="directoryScanId" (input)="scheduleSearch()">
+        </label>
+        <label>{{ copy.directoryEntryId }}
+          <input inputmode="numeric" [(ngModel)]="form.directoryEntryId" name="directoryEntryId" (input)="scheduleSearch()">
+        </label>
+        <label class="check"><input type="checkbox" [(ngModel)]="form.recursive" name="recursive"
+          (change)="scheduleSearch()"> {{ copy.recursive }}</label>
+      }
+    </div>
+  </details>
+
+  <details open>
+    <summary>{{ copy.namesAndPaths }}</summary>
+    <div class="filter-grid">
+      <label>{{ copy.nameMatch }}
+        <select [(ngModel)]="form.nameOperator" name="nameOperator" (change)="scheduleSearch()">
+          <option value="CONTAINS">{{ copy.contains }}</option><option value="STARTS_WITH">{{ copy.startsWith }}</option>
+          <option value="ENDS_WITH">{{ copy.endsWith }}</option><option value="EXACT">{{ copy.exact }}</option>
+          <option value="GLOB">{{ copy.glob }}</option><option value="REGEX">{{ copy.regex }}</option>
+        </select>
+      </label>
+      <label class="wide">{{ copy.nameValue }}
+        <input type="search" [(ngModel)]="form.nameValue" name="nameValue" (input)="scheduleSearch()">
+      </label>
+      <label class="check"><input type="checkbox" [(ngModel)]="form.caseSensitive" name="caseSensitive"
+        (change)="scheduleSearch()"> {{ copy.caseSensitive }}</label>
+      <label>{{ copy.pathContains }}<input [(ngModel)]="form.pathContains" name="pathContains" (input)="scheduleSearch()"></label>
+      <label>{{ copy.pathStarts }}<input [(ngModel)]="form.pathStarts" name="pathStarts" (input)="scheduleSearch()"></label>
+      <label>{{ copy.pathUnder }}<input [(ngModel)]="form.pathUnder" name="pathUnder" (input)="scheduleSearch()"></label>
+      <label>{{ copy.extensions }}<input [(ngModel)]="form.extensions" name="extensions" placeholder="txt, pdf" (input)="scheduleSearch()"></label>
+      <label class="wide">{{ copy.excludeDirectories }}
+        <textarea rows="3" [(ngModel)]="form.pathExcludes" name="pathExcludes" [placeholder]="copy.onePathPerLine"
+          (input)="scheduleSearch()"></textarea>
+      </label>
+    </div>
+  </details>
+
+  <details>
+    <summary>{{ copy.attributes }}</summary>
+    <div class="filter-grid">
+      <label>{{ copy.exactSize }}<input [(ngModel)]="form.sizeExact" name="sizeExact" placeholder="10 MiB" (input)="scheduleSearch()"></label>
+      <label>{{ copy.minimumSize }}<input [(ngModel)]="form.sizeMin" name="sizeMin" placeholder="10 MB" (input)="scheduleSearch()"></label>
+      <label>{{ copy.maximumSize }}<input [(ngModel)]="form.sizeMax" name="sizeMax" placeholder="2 GiB" (input)="scheduleSearch()"></label>
+      <label>{{ copy.modifiedAfter }}<input type="datetime-local" [(ngModel)]="form.modifiedAfter" name="modifiedAfter" (change)="scheduleSearch()"></label>
+      <label>{{ copy.modifiedBefore }}<input type="datetime-local" [(ngModel)]="form.modifiedBefore" name="modifiedBefore" (change)="scheduleSearch()"></label>
+      <fieldset class="wide kind-picker"><legend>{{ copy.entryTypes }}</legend>
+        @for (kind of kinds; track kind) {
+          <label class="check"><input type="checkbox" [checked]="form.kinds[kind]"
+            (change)="toggleKind(kind, $any($event.target).checked)"> {{ kind }}</label>
+        }
+      </fieldset>
+      <label>{{ copy.hashState }}
+        <select [(ngModel)]="form.hashState" name="hashState" (change)="scheduleSearch()">
+          <option value="ANY">{{ copy.any }}</option><option value="HASHED">{{ copy.hashed }}</option>
+          <option value="UNHASHED">{{ copy.unhashed }}</option>
+        </select>
+      </label>
+      <label>{{ copy.duplicateStatus }}
+        <select [(ngModel)]="form.duplicate" name="duplicate" (change)="scheduleSearch()">
+          <option value="ANY">{{ copy.any }}</option><option value="CONFIRMED">{{ copy.confirmedDuplicate }}</option>
+          <option value="NOT_CONFIRMED">{{ copy.noConfirmedDuplicate }}</option><option value="COPIES_2">{{ copy.twoPlusCopies }}</option>
+          <option value="COPIES_3">{{ copy.threePlusCopies }}</option><option value="ACROSS_SCANS">{{ copy.acrossScans }}</option>
+        </select>
+      </label>
+      <label>{{ copy.errorFilter }}
+        <select [(ngModel)]="form.errorState" name="errorState" (change)="scheduleSearch()">
+          <option value="ANY">{{ copy.any }}</option><option value="HAS">{{ copy.withErrors }}</option>
+          <option value="NONE">{{ copy.withoutErrors }}</option>
+        </select>
+      </label>
+    </div>
+  </details>
+
+  <div class="search-actions">
+    <label>{{ copy.sortBy }}
+      <select [(ngModel)]="form.sortField" name="sortField" (change)="scheduleSearch()">
+        <option value="PATH">{{ copy.path }}</option><option value="NAME">{{ copy.name }}</option>
+        <option value="SIZE">{{ copy.size }}</option><option value="MODIFIED">{{ copy.modified }}</option>
+        <option value="SCAN">{{ copy.scanLabel }}</option>
+      </select>
+    </label>
+    <label>{{ copy.direction }}
+      <select [(ngModel)]="form.sortDirection" name="sortDirection" (change)="scheduleSearch()">
+        <option value="ASC">{{ copy.ascending }}</option><option value="DESC">{{ copy.descending }}</option>
+      </select>
+    </label>
+    <label>{{ copy.pageSize }}
+      <select [(ngModel)]="form.limit" name="limit" (change)="scheduleSearch()">
+        <option [ngValue]="50">50</option><option [ngValue]="100">100</option>
+        <option [ngValue]="250">250</option><option [ngValue]="500">500</option>
+      </select>
+    </label>
+    <button type="submit" [disabled]="loading()">{{ copy.searchFiles }}</button>
+  </div>
+</form>
+
+@if (loading()) { <p class="message" role="status">{{ copy.searching }}</p> }
+@if (problem(); as issue) {
+  <div class="message error" role="alert"><strong>{{ issue.code }}</strong> {{ issue.message }}</div>
+}
+@if (results(); as result) {
+  <p class="coverage" [class.attention]="result.coverage.hasUnhashedFiles">{{ copy.hashWarning }}</p>
+  <section class="panel results-panel">
+    <div class="table-wrap"><table>
+      <thead><tr><th>{{ copy.name }}</th><th>{{ copy.scanLabel }}</th><th>{{ copy.relativePath }}</th>
+        <th>{{ copy.type }}</th><th class="number">{{ copy.size }}</th><th>{{ copy.modified }}</th>
+        <th>{{ copy.duplicateStatus }}</th><th>{{ copy.actions }}</th></tr></thead>
+      <tbody>
+        @for (item of result.items; track item.scanId + ':' + item.entryId) {
+          <tr><td><button type="button" class="text-action file-name" (click)="openResult(item)">{{ item.filename }}</button></td>
+            <td><button type="button" class="text-action" (click)="scanOpen.emit(item.scanId!)">{{ item.scanName }}</button></td>
+            <td class="path-text">{{ item.relativePath }}</td><td>{{ item.kind }}</td>
+            <td class="number">{{ item.kind === 'FILE' ? formatBytes(item.size) : '—' }}</td>
+            <td>{{ formatModified(item) }}</td><td>{{ item.kind === 'FILE' ? duplicateLabel(item) : '—' }}</td>
+            <td class="actions"><button type="button" class="text-action" (click)="openResult(item)">{{ copy.details }}</button>
+              @if (item.parentId > 0) { <button type="button" class="text-action" (click)="openContainingDirectory(item)">{{ copy.containingDirectory }}</button> }
+              @if (item.hasError) { <span class="error-flag">{{ copy.hasError }}</span> }
+            </td></tr>
+        } @empty { <tr><td colspan="8" class="empty">{{ copy.noSearchResults }}</td></tr> }
+      </tbody>
+    </table></div>
+    <div class="pagination">
+      <button type="button" class="secondary" (click)="previous()" [disabled]="loading() || !canPrevious()">{{ copy.previous }}</button>
+      <span>{{ result.items.length }} {{ copy.onPage }}</span>
+      <button type="button" class="secondary" (click)="next()" [disabled]="loading() || !result.page.hasMore">{{ copy.next }}</button>
+    </div>
+  </section>
+}

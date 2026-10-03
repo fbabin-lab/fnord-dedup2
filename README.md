@@ -117,6 +117,18 @@ Repeat `images --name ...` after interruption. Use `--image-container-hash candi
 
 Nested archive/image dispatch, differencing VHD/VHDX, password management, OS inventory, DMG conversion fallback and combined cross-domain duplicate reports are not implemented in this phase. Container support is separate from inner-filesystem support.
 
+## Optional web explorer
+
+The Spring Boot and Angular companion opens a scanner database read-only. It provides scan summaries, lazy directory browsing, recorded errors, and bounded server-side file search across all scans, selected scans, or one directory. Search filters cover names, paths, extensions, byte sizes, modified times, entry types, hashes, confirmed duplicates, and errors. Missing hashes remain unresolved.
+
+```bash
+./gradlew :web-api:bootJar
+java -jar web-api/build/libs/fnord-dedup2-web.jar \
+  --db /data/scans.duckdb --state-db /data/fnord-web.duckdb --port 8080
+```
+
+Saved searches are the only mutable web data and live in the separately locked state database. The state path must differ from the scanner path. See [the web explorer guide](docs/WEB_UI.md) for the API, security boundary, page cursors, and development workflow.
+
 ## Scripting
 
 The distribution includes a Groovy runner:
