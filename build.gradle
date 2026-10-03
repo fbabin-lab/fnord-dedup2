@@ -25,10 +25,17 @@ application {
     applicationDefaultJvmArgs = ['-Xms64m', '-Xmx512m']
 }
 tasks.withType(GroovyCompile).configureEach { groovyOptions.encoding = 'UTF-8' }
+def coreTests = ['StoredPathTest','HardenedStoredPathTest','WindowsCoreTest','WindowsNativeTest',
+    'PortableCoreTest','PortableDatabasePathTest','DedupTest','CrossScanTest','CliTest','BulkWriterTest']
 test {
     useJUnitPlatform()
     maxParallelForks = 1
     maxHeapSize = '512m'
+    // Native archive/image suites and POSIX-only merge fixtures stay on Linux.
+    // PortableCoreTest plus Windows process/launcher tests verify merge on Windows.
+    if (System.getProperty('os.name').startsWith('Windows')) {
+        filter { coreTests.each { includeTestsMatching 'fnord.dedup.' + it } }
+    }
     testLogging { events 'passed', 'skipped', 'failed'; exceptionFormat = 'full' }
 }
 tasks.register('windowsCoreTest', Test) {
@@ -38,14 +45,7 @@ tasks.register('windowsCoreTest', Test) {
     useJUnitPlatform()
     maxParallelForks = 1
     maxHeapSize = '512m'
-    filter {
-        includeTestsMatching 'fnord.dedup.StoredPathTest'
-        includeTestsMatching 'fnord.dedup.WindowsCoreTest'
-        includeTestsMatching 'fnord.dedup.DedupTest'
-        includeTestsMatching 'fnord.dedup.CrossScanTest'
-        includeTestsMatching 'fnord.dedup.CliTest'
-        includeTestsMatching 'fnord.dedup.BulkWriterTest'
-    }
+    filter { coreTests.each { includeTestsMatching 'fnord.dedup.' + it } }
     testLogging { events 'passed', 'skipped', 'failed'; exceptionFormat = 'full' }
 }
 

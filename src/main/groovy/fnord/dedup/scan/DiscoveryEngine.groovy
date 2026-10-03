@@ -5,6 +5,7 @@ import fnord.dedup.StopToken
 import fnord.dedup.store.BulkWriter
 import fnord.dedup.store.DuckStore
 import fnord.dedup.path.StoredPath
+import fnord.dedup.path.NativeFiles
 import groovy.transform.CompileStatic
 import java.nio.file.DirectoryIteratorException
 import java.nio.file.DirectoryStream
@@ -19,8 +20,9 @@ final class DiscoveryEngine {
     static void run(DuckStore store, Map scan, ScanOptions options, StopToken stop, Closure progress) {
         if (scan.get('phase') != 'DISCOVERING') return
         long scanId = ((Number) scan.get('scan_id')).longValue()
-        store.recoverDiscovery(scanId)
         Path root = StoredPath.nativeRoot((String) scan.get('root'))
+        NativeFiles.requireDirectory(root)
+        store.recoverDiscovery(scanId)
         long nextId = ((Number) scan.get('next_entry_id')).longValue()
         BulkWriter writer = new BulkWriter(store, scanId, 'discovery', nextId, options, progress)
         Long active = null
@@ -36,13 +38,20 @@ final class DiscoveryEngine {
                     Path directory = StoredPath.resolve(root, relative)
                     try {
                         BasicFileAttributes current = Files.readAttributes(directory, BasicFileAttributes, LinkOption.NOFOLLOW_LINKS)
-                        if (!current.isDirectory()) throw new IOException('Directory disappeared or changed type since discovery')
+                        NativeFiles.checkAncestors(root, directory)
+                        if (NativeFiles.kind(current) != 'DIRECTORY') throw new IOException('Directory disappeared or became a link/reparse point since discovery')
                         try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory)) {
                             Iterator<Path> iterator = stream.iterator()
                             while (!stop.cancelled && iterator.hasNext()) {
                                 Path child = iterator.next()
                                 if (store.excluded(child)) continue
-                                String childRelative = StoredPath.storeRelative(root.relativize(child))
+                                String childRelative
+                                try { childRelative = StoredPath.storeRelative(root.relativize(child)) }
+                                catch (IllegalArgumentException unsupported) {
+                                    writer.error('DISCOVERY', relative, 'Unsupported filename below directory: ' + child.fileName + ': ' + unsupported.message)
+                                    writer.maybeCheckpoint(active)
+                                    continue
+                                }
                                 // Java String paths cannot losslessly represent arbitrary non-UTF-8 bytes.
                                 if (!Path.of(child.toString()).equals(child)) {
                                     writer.error('DISCOVERY', childRelative, 'Filename is not representable as UTF-8; entry skipped')
@@ -57,8 +66,7 @@ final class DiscoveryEngine {
                                     writer.maybeCheckpoint(active)
                                     continue
                                 }
-                                String kind = attributes.isRegularFile() ? 'FILE' : attributes.isDirectory() ? 'DIRECTORY' :
-                                    attributes.isSymbolicLink() ? 'SYMLINK' : 'OTHER'
+                                String kind = NativeFiles.kind(attributes)
                                 writer.entry(writer.allocateId(), directoryId, childRelative, child.fileName.toString(), kind, attributes)
                                 writer.maybeCheckpoint(active)
                             }
@@ -70,7 +78,7 @@ final class DiscoveryEngine {
                     // Failed directories are completed with an explicit error, not silently successful.
                     writer.directoryCompleted(directoryId)
                     active = null
-                    writer.maybeCheckpoint(null)
+                    writer.maybeCheckpoint(active)
                 }
                 writer.checkpoint(active)
             }

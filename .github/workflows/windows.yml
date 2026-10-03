@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   core:
-    runs-on: windows-latest
-    timeout-minutes: 15
+    runs-on: windows-2025
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -21,22 +21,23 @@ jobs:
           java-version: '21'
       - name: Build Windows core and distribution
         shell: pwsh
-        run: .\gradlew.bat --no-daemon windowsCoreTest installDist distZip
-      - name: Verify Windows launchers
-        shell: pwsh
-        run: |
-          .\build\install\fnord-dedup2\bin\fnord-dedup2.bat --help
-          .\bin\fnord-dedup2.bat --help
-          .\build\install\fnord-dedup2\bin\fnord-dedup2-groovy.bat -e "assert GroovySystem.version"
-      - name: Windows filesystem, cross-scan and merge smoke
+        run: .\gradlew.bat --no-daemon test installDist distZip
+      - name: Windows filesystem, cross-scan and merge launchers
         shell: pwsh
         run: .\scripts\windows-core-smoke.ps1
+      - name: Forced interruption recovery and ZIP distribution
+        shell: pwsh
+        run: .\scripts\windows-smoke.ps1
       - name: Upload Windows test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: windows-test-reports
-          path: build/reports/tests/windowsCoreTest/
+          path: |
+            build/reports/tests/
+            build/test-results/
+            build/windows-smoke/*.log
+            build/windows-smoke/summary.txt
           if-no-files-found: ignore
           retention-days: 7
       - name: Upload Windows distribution

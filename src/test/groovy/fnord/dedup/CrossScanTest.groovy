@@ -211,7 +211,7 @@ class CrossScanTest {
             Files.delete(a.resolve('missing'))
             def time=Files.getLastModifiedTime(a.resolve('changed')).toInstant()
             Files.writeString(a.resolve('changed'),'diff')
-            Files.setLastModifiedTime(a.resolve('changed'),FileTime.from(time.plusNanos(1)))
+            Files.setLastModifiedTime(a.resolve('changed'),FileTime.from(time.plusSeconds(2)))
             List<Map> errors=[]
             def r=compare(d,['A','B'],new CrossScanOptions(onError:{errors.add(it)},maxErrorSamples:1))
             assert r.summary.hash_failures==2 && r.summary.unresolved_candidates==2 && r.summary.partial

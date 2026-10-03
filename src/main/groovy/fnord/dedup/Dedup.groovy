@@ -1,5 +1,8 @@
 package fnord.dedup
 
+import fnord.dedup.path.NativeFiles
+import fnord.dedup.path.StoredPath
+
 import fnord.dedup.hash.FileHasher
 import fnord.dedup.cross.CrossScanEngine
 import fnord.dedup.cross.CrossScanOptions
@@ -66,6 +69,8 @@ final class Dedup implements AutoCloseable {
     // The archive schema is initialized only when an archive API is called.
     // Ordinary resume intentionally does not opt a scan into archive extraction.
     Map analyzeArchives(String name, ArchiveOptions archiveOptions = new ArchiveOptions(), StopToken stop = new StopToken()) {
+        NativeFiles.requireLinux('Archive')
+        StoredPath.nativeRoot(store.scan(name).root as String)
         new ArchiveAnalysis(this, archiveOptions).analyze(name, stop)
     }
     private ArchiveStore archives() { new ArchiveStore(store, options.batchSize) }
@@ -76,6 +81,8 @@ final class Dedup implements AutoCloseable {
     void eachArchiveError(String name, Closure consumer) { archives().eachError(name, consumer) }
 
     Map analyzeImages(String name, fnord.dedup.image.ImageOptions imageOptions = new fnord.dedup.image.ImageOptions(), StopToken stop = new StopToken()) {
+        NativeFiles.requireLinux('Disk-image')
+        StoredPath.nativeRoot(store.scan(name).root as String)
         new fnord.dedup.image.ImageAnalysis(store, options, imageOptions, stop, progress).run(name)
     }
     Map imageStatus(String name) { new fnord.dedup.image.ImageStore(store).status(name) }

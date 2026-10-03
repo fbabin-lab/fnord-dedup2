@@ -2,6 +2,7 @@ package fnord.dedup.hash
 
 import fnord.dedup.StopToken
 import fnord.dedup.path.StoredPath
+import fnord.dedup.path.NativeFiles
 import fnord.dedup.path.ForeignStoredPathException
 import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
@@ -22,9 +23,11 @@ final class FileHashTask {
         try {
             stop.check()
             Path path = StoredPath.resolve(root, candidate.relative_path as String)
+            NativeFiles.checkAncestors(root, path)
             verify(path, candidate)
             HashValue value = hasher.hash(path, stop, bufferBytes)
             stop.check()
+            NativeFiles.checkAncestors(root, path)
             verify(path, candidate)
             if (value == null) throw new IllegalArgumentException('Hasher returned no result')
             if (value.bytesRead != (candidate.size as long)) {
@@ -48,7 +51,7 @@ final class FileHashTask {
 
     private static void verify(Path path, Map candidate) {
         BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes, LinkOption.NOFOLLOW_LINKS)
-        if (!attributes.isRegularFile()) {
+        if (NativeFiles.kind(attributes) != 'FILE') {
             throw new FileObservationChanged('NOT_REGULAR_ANYMORE', 'File is no longer regular; excluded from duplicate results')
         }
         def modified = attributes.lastModifiedTime().toInstant()

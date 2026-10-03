@@ -2,6 +2,7 @@ package fnord.dedup.store
 
 import fnord.dedup.ScanOptions
 import fnord.dedup.path.StoredPath
+import fnord.dedup.path.NativeFiles
 import org.duckdb.DuckDBConnection
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -103,15 +104,23 @@ class DuckStore implements AutoCloseable {
 
     boolean excluded(Path path) {
         Path normalized = path.toAbsolutePath().normalize()
-        normalized == database || normalized == Path.of(database.toString() + '.wal') ||
-            normalized == Path.of(database.toString() + '.lock') || normalized.startsWith(tempDirectory)
+        if (normalized == database || normalized == Path.of(database.toString() + '.wal') ||
+            normalized == Path.of(database.toString() + '.lock') || normalized.startsWith(tempDirectory)) return true
+        if (StoredPath.windowsHost()) {
+            // Existing aliases/hardlinks of active DB/control files must not enter the inventory.
+            for (Path control : [database, Path.of(database.toString()+'.wal'), Path.of(database.toString()+'.lock')]) {
+                try { if (Files.isSameFile(normalized, control)) return true }
+                catch (IOException | SecurityException ignored) { /* Missing/inaccessible candidates are handled by traversal. */ }
+            }
+        }
+        false
     }
 
     Map createScan(String name, Path requestedRoot) {
         StoredPath.validateRequestedRoot(requestedRoot)
         if (!name || !name.trim() || name.length() > 200) throw new IllegalArgumentException('Scan name must contain 1..200 characters')
-        Path root = requestedRoot.toRealPath()
-        if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) throw new IllegalArgumentException('Scan root must be a directory')
+        Path root = StoredPath.canonicalRoot(requestedRoot)
+        if (NativeFiles.kind(Files.readAttributes(root, BasicFileAttributes, LinkOption.NOFOLLOW_LINKS)) != 'DIRECTORY') throw new IllegalArgumentException('Scan root must be a directory')
         if (excluded(root)) throw new IllegalArgumentException('Cannot scan the database temporary directory')
         BasicFileAttributes attributes = Files.readAttributes(root, BasicFileAttributes, LinkOption.NOFOLLOW_LINKS)
         transaction {

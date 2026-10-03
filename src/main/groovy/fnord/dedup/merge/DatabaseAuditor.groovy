@@ -1,5 +1,7 @@
 package fnord.dedup.merge
 
+import fnord.dedup.path.StoredPath
+
 import java.sql.DriverManager
 
 /** Strict v1 logical audit. Never opens paths recorded by scans or temp registries. */
@@ -117,7 +119,14 @@ class DatabaseAuditor {
     private void base() {
         unique('scans','scan_id'); unique('scans','name')
         states('scans','phase',"'DISCOVERING','READY','HASHING','COMPLETE','COMPLETE_WITH_ERRORS'")
-        none('Invalid scan identity, name, root or algorithm', "SELECT 1 FROM ${p}scans WHERE scan_id<=0 OR length(trim(name))=0 OR length(name)>200 OR algorithm<>'SHA-256' OR NOT regexp_full_match(root,'(/|/[^/].*|//[^/]+/[^/]+(/.*)?|[A-Za-z]:/.*)') OR next_entry_id<2")
+        none('Invalid scan identity, name, root or algorithm', "SELECT 1 FROM ${p}scans WHERE scan_id<=0 OR length(trim(name))=0 OR length(name)>200 OR algorithm<>'SHA-256' OR next_entry_id<2")
+        // Stored roots are lexical identities; do not consult the importing host filesystem.
+        sql.each("SELECT DISTINCT root FROM ${p}scans") { Map row ->
+            if (StoredPath.classify(row.root as String) == StoredPath.Style.UNKNOWN) refuse('INCONSISTENT_DATABASE','Invalid portable scan root')
+        }
+        none('Native Windows separators or invalid Windows components in stored inventory', """SELECT 1 FROM ${p}entries e JOIN ${p}scans s USING(scan_id)
+            WHERE (starts_with(s.root,'//') OR regexp_matches(s.root,'^[A-Za-z]:/')) AND
+            (contains(e.relative_path,chr(92)) OR regexp_matches(e.relative_path,'[<>:"|?*]') OR regexp_matches(e.relative_path,'[ .](/|\$)'))""")
         for (String table : BASE - ['scans']) orphan(table,'scan_id','scans')
         unique('entries','scan_id,entry_id'); unique('entries','scan_id,relative_path')
         unique('directories','scan_id,entry_id'); unique('hashes','scan_id,entry_id')
