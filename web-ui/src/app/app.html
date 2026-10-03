@@ -12,6 +12,8 @@
         (click)="navigate('/scans')">{{ copy.scans }}</button>
       <button type="button" class="nav-item" [class.active]="view() === 'explorer'"
         (click)="openExplorer()">{{ copy.explorer }}</button>
+      <button type="button" class="nav-item" [class.active]="view() === 'search'"
+        (click)="navigate('/search')">{{ copy.search }}</button>
       <button type="button" class="nav-item" [class.active]="view() === 'errors'"
         (click)="openErrors()">{{ copy.errors }}</button>
       <p class="nav-caption future-caption">{{ copy.upcoming }}</p>
@@ -42,11 +44,15 @@
             <h1>{{ scan()?.name || copy.scanDetail }}</h1><p class="lead path-text">{{ scan()?.root }}</p>
           } @else if (view() === 'explorer') {
             <h1>{{ copy.explorer }}</h1><p class="lead">{{ scan()?.name }} · {{ copy.explorerDescription }}</p>
+          } @else if (view() === 'search') {
+            <h1>{{ copy.search }}</h1><p class="lead">{{ copy.searchDescription }}</p>
           } @else {
             <h1>{{ copy.errors }}</h1><p class="lead">{{ scan()?.name }} · {{ copy.errorsDescription }}</p>
           }
         </div>
-        <button type="button" (click)="refresh()" [disabled]="loading()">{{ copy.retry }}</button>
+        @if (view() !== 'search') {
+          <button type="button" (click)="refresh()" [disabled]="loading()">{{ copy.retry }}</button>
+        }
       </div>
 
       @if (statusProblem(); as statusIssue) {
@@ -154,6 +160,7 @@
         @if (scan(); as current) {
           <div class="actions-row">
             <button type="button" (click)="openExplorer(current.scanId)">{{ copy.exploreFiles }}</button>
+            <button type="button" class="secondary" (click)="openSearch(current.scanId)">{{ copy.searchThisScan }}</button>
             <button type="button" class="secondary" (click)="openErrors(current.scanId)">{{ copy.viewErrors }}</button>
           </div>
           <section class="metrics-grid">
@@ -196,7 +203,8 @@
             </aside>
             <section class="panel listing-panel">
               <div class="section-heading"><div><h2 class="path-text">{{ listing.directory.path }}</h2>
-                <p class="hint">{{ copy.directoryHint }}</p></div></div>
+                <p class="hint">{{ copy.directoryHint }}</p></div>
+                <button type="button" class="secondary" (click)="openSearch(scanId()!, directoryId())">{{ copy.searchThisDirectory }}</button></div>
               <div class="table-wrap">
                 <table>
                   <thead><tr><th>{{ copy.name }}</th><th>{{ copy.type }}</th><th class="number">{{ copy.size }}</th>
@@ -220,37 +228,13 @@
               </div>
             </section>
           </div>
-          @if (detailLoading() || selectedEntry() || detailProblem()) {
-            <div class="drawer-backdrop" (click)="closeEntry()"></div>
-            <aside class="detail-drawer" role="dialog" [attr.aria-label]="copy.fileDetails">
-              <div class="section-heading"><h2>{{ copy.fileDetails }}</h2>
-                <button type="button" class="secondary" (click)="closeEntry()">{{ copy.close }}</button></div>
-              @if (detailLoading()) { <p class="message">{{ copy.loading }}</p> }
-              @if (detailProblem(); as issue) { <p class="message error" role="alert">{{ issue.message }}</p> }
-              @if (selectedEntry(); as file) {
-                <h3 class="file-name">{{ file.filename }}</h3>
-                <dl class="detail-list">
-                  <div><dt>{{ copy.path }}</dt><dd class="path-text">{{ file.path }}</dd></div>
-                  <div><dt>{{ copy.relativePath }}</dt><dd class="path-text">{{ file.relativePath }}</dd></div>
-                  <div><dt>{{ copy.type }}</dt><dd>{{ file.kind }}</dd></div>
-                  <div><dt>{{ copy.size }}</dt><dd>{{ formatBytes(file.size) }} ({{ file.size }} {{ copy.bytes }})</dd></div>
-                  <div><dt>{{ copy.modified }}</dt><dd>{{ formatModified(file) }}</dd></div>
-                  <div><dt>{{ copy.hashState }}</dt><dd>{{ file.sha256 ? copy.hashed : copy.unknownHash }}</dd></div>
-                  <div><dt>{{ copy.sha256 }}</dt><dd class="hash-text">{{ file.sha256 || '—' }}</dd></div>
-                  <div><dt>{{ copy.confirmedOccurrences }}</dt>
-                    <dd>{{ file.duplicateCount === null ? copy.unknownHash : file.duplicateCount }}</dd></div>
-                </dl>
-                @if (file.relatedErrors?.length) {
-                  <h3>{{ copy.relatedErrors }}</h3>
-                  @for (issue of file.relatedErrors; track $index) {
-                    <p class="related-error">{{ issue.phase }} · {{ issue.message }}</p>
-                  }
-                }
-                <p class="hint">{{ copy.historicalObservation }}</p>
-              }
-            </aside>
-          }
         }
+      }
+
+      @if (view() === 'search') {
+        <app-file-search [initialScanId]="scanId()" [initialDirectoryId]="searchDirectoryId()"
+          (entryOpen)="openEntry($event)" (directoryOpen)="openSearchDirectory($event)"
+          (scanOpen)="openScan($event)" />
       }
 
       @if (view() === 'errors') {
@@ -273,6 +257,37 @@
             </div>
           </section>
         }
+      }
+
+      @if (detailLoading() || selectedEntry() || detailProblem()) {
+        <div class="drawer-backdrop" (click)="closeEntry()"></div>
+        <aside class="detail-drawer" role="dialog" [attr.aria-label]="copy.fileDetails">
+          <div class="section-heading"><h2>{{ copy.fileDetails }}</h2>
+            <button type="button" class="secondary" (click)="closeEntry()">{{ copy.close }}</button></div>
+          @if (detailLoading()) { <p class="message">{{ copy.loading }}</p> }
+          @if (detailProblem(); as issue) { <p class="message error" role="alert">{{ issue.message }}</p> }
+          @if (selectedEntry(); as file) {
+            <h3 class="file-name">{{ file.filename }}</h3>
+            <dl class="detail-list">
+              <div><dt>{{ copy.path }}</dt><dd class="path-text">{{ file.path }}</dd></div>
+              <div><dt>{{ copy.relativePath }}</dt><dd class="path-text">{{ file.relativePath }}</dd></div>
+              <div><dt>{{ copy.type }}</dt><dd>{{ file.kind }}</dd></div>
+              <div><dt>{{ copy.size }}</dt><dd>{{ formatBytes(file.size) }} ({{ file.size }} {{ copy.bytes }})</dd></div>
+              <div><dt>{{ copy.modified }}</dt><dd>{{ formatModified(file) }}</dd></div>
+              <div><dt>{{ copy.hashState }}</dt><dd>{{ file.sha256 ? copy.hashed : copy.unknownHash }}</dd></div>
+              <div><dt>{{ copy.sha256 }}</dt><dd class="hash-text">{{ file.sha256 || '—' }}</dd></div>
+              <div><dt>{{ copy.confirmedOccurrences }}</dt>
+                <dd>{{ file.duplicateCount === null ? copy.unknownHash : file.duplicateCount }}</dd></div>
+            </dl>
+            @if (file.relatedErrors?.length) {
+              <h3>{{ copy.relatedErrors }}</h3>
+              @for (issue of file.relatedErrors; track $index) {
+                <p class="related-error">{{ issue.phase }} · {{ issue.message }}</p>
+              }
+            }
+            <p class="hint">{{ copy.historicalObservation }}</p>
+          }
+        </aside>
       }
     </div>
   </main>

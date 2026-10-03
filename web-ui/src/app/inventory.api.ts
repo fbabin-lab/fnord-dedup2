@@ -1,8 +1,9 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import {
-  Breadcrumb, ChildPage, Dashboard, DatabaseStatus, Entry, Page, Registration,
-  Scan, ScanError, ScanFilters
+  Breadcrumb, ChildPage, Dashboard, DatabaseStatus, Entry, FileSearchPage,
+  FileSearchRequest, Page, Registration, SavedSearch, SavedSearchList, Scan,
+  ScanError, ScanFilters
 } from './inventory.models';
 
 @Injectable({ providedIn: 'root' })
@@ -38,5 +39,18 @@ export class InventoryApi {
     let params = new HttpParams().set('limit', limit);
     if (cursor) params = params.set('cursor', cursor);
     return this.http.get<Page<ScanError>>('/api/v1/scans/' + scanId + '/errors', { params });
+  }
+  searchFiles(request: FileSearchRequest) {
+    return this.http.post<FileSearchPage>('/api/v1/search/files', request);
+  }
+  savedSearches() { return this.http.get<SavedSearchList>('/api/v1/saved-searches'); }
+  createSavedSearch(body: { name: string; description: string; request: FileSearchRequest }) {
+    return this.http.post<SavedSearch>('/api/v1/saved-searches', body);
+  }
+  updateSavedSearch(id: string, body: { name: string; description: string; request: FileSearchRequest }) {
+    return this.http.put<SavedSearch>('/api/v1/saved-searches/' + encodeURIComponent(id), body);
+  }
+  deleteSavedSearch(id: string) {
+    return this.http.delete<void>('/api/v1/saved-searches/' + encodeURIComponent(id));
   }
 }

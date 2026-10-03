@@ -3,18 +3,19 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Observable, Subscription, forkJoin } from 'rxjs';
 import { copy } from './copy';
 import { DirectoryTreeComponent } from './directory-tree';
+import { FileSearchComponent } from './file-search';
 import { InventoryApi } from './inventory.api';
 import {
   ApiError, Breadcrumb, ChildPage, Dashboard, DatabaseStatus, Entry, Page,
   Registration, Scan, ScanError, ScanFilters
 } from './inventory.models';
 
-type View = 'dashboard' | 'scans' | 'scan' | 'explorer' | 'errors';
+type View = 'dashboard' | 'scans' | 'scan' | 'explorer' | 'search' | 'errors';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [DirectoryTreeComponent],
+  imports: [DirectoryTreeComponent, FileSearchComponent],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
@@ -36,6 +37,7 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly view = signal<View>('dashboard');
   readonly scanId = signal<number | null>(null);
   readonly directoryId = signal(1);
+  readonly searchDirectoryId = signal<number | null>(null);
   readonly registration = signal<Registration | null>(null);
   readonly status = signal<DatabaseStatus | null>(null);
   readonly dashboard = signal<Dashboard | null>(null);
@@ -79,14 +81,24 @@ export class AppComponent implements OnInit, OnDestroy {
     const id = this.scanId();
     if (id) this.navigate('/scans/' + id + '/explore/' + entryId);
   }
+  openSearchDirectory(location: { scanId: number; entryId: number }): void {
+    this.navigate('/scans/' + location.scanId + '/explore/' + location.entryId);
+  }
+  openSearch(scanId?: number, entryId?: number): void {
+    const path = scanId ? '/search/' + scanId + (entryId ? '/' + entryId : '') : '/search';
+    this.navigate(path);
+  }
   openErrors(id?: number): void {
     const target = id ?? this.scanId();
     if (target) this.navigate('/scans/' + target + '/errors');
     else this.navigate('/scans');
   }
   openEntry(entry: Entry): void {
-    if (entry.kind === 'DIRECTORY') { this.openDirectory(entry.entryId); return; }
-    const scanId = this.scanId();
+    const scanId = entry.scanId ?? this.scanId();
+    if (entry.kind === 'DIRECTORY') {
+      if (scanId) this.navigate('/scans/' + scanId + '/explore/' + entry.entryId);
+      return;
+    }
     if (!scanId) return;
     this.detailRequest?.unsubscribe();
     this.selectedEntry.set(null);
@@ -173,9 +185,17 @@ export class AppComponent implements OnInit, OnDestroy {
     if (path === this.routeKey) return;
     this.routeKey = path;
     const parts = path.split('/').filter(Boolean);
-    const id = Number(parts[1]), entryId = Number(parts[3]);
+    const id = Number(parts[1]), entryId = Number(parts[3]), searchEntryId = Number(parts[2]);
+    this.searchDirectoryId.set(null);
     if (parts[0] === 'scans' && parts.length === 1) {
       this.view.set('scans'); this.scanId.set(null);
+    } else if (parts[0] === 'search' && parts.length === 1) {
+      this.view.set('search'); this.scanId.set(null);
+    } else if (parts[0] === 'search' && Number.isSafeInteger(id) && id > 0 &&
+               (parts.length === 2 || (parts.length === 3 &&
+                Number.isSafeInteger(searchEntryId) && searchEntryId > 0))) {
+      this.view.set('search'); this.scanId.set(id);
+      this.searchDirectoryId.set(parts.length === 3 ? searchEntryId : null);
     } else if (parts[0] === 'scans' && Number.isSafeInteger(id) && id > 0 &&
                parts.length === 2) {
       this.view.set('scan'); this.scanId.set(id);
@@ -205,6 +225,7 @@ export class AppComponent implements OnInit, OnDestroy {
         recent: this.api.scans(null, { name: '', phase: '', hasErrors: '' }, 10)
       }), result => { this.dashboard.set(result.metrics); this.scans.set(result.recent); });
     } else if (this.view() === 'scans') this.loadScanPage();
+    else if (this.view() === 'search') this.loading.set(false);
     else {
       const id = this.scanId();
       if (!id) return;
@@ -259,7 +280,8 @@ export class AppComponent implements OnInit, OnDestroy {
     const body = failure.error as Partial<ApiError> | null;
     return {
       code: body?.code ?? 'REQUEST_FAILED',
-      message: failure.status === 423 ? copy.locked : body?.message ?? copy.failed
+      message: failure.status === 423 && body?.code === 'DATABASE_LOCKED' ?
+        copy.locked : body?.message ?? copy.failed
     };
   }
 }
