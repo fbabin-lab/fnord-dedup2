@@ -127,7 +127,7 @@ Nested archive/image dispatch, differencing VHD/VHDX, password management, OS in
 
 ## Optional web explorer
 
-The Spring Boot and Angular companion opens a scanner database read-only. It provides scan summaries, lazy directory browsing, recorded errors, and bounded server-side file search across all scans, selected scans, or one directory. Search filters cover names, paths, extensions, byte sizes, modified times, entry types, hashes, confirmed duplicates, and errors. Missing hashes remain unresolved.
+The Spring Boot and Angular companion opens a scanner database read-only. It provides scan summaries, lazy directory browsing, recorded errors, bounded server-side file search, and a Duplicate Explorer with explicitly selected scan scopes and paged occurrence views. Search and duplicate filters cover names, paths, extensions, byte sizes, modified times, and errors. Missing hashes remain unresolved, and duplicate totals describe historical observations rather than reclaimable space.
 
 ```bash
 ./gradlew :web-api:bootJar

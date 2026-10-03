@@ -101,3 +101,41 @@ export interface SavedSearch {
   updatedAt: string;
 }
 export interface SavedSearchList { items: SavedSearch[]; limit: number; truncated: boolean; }
+
+export interface DuplicateRequest {
+  scanIds: number[];
+  limit?: number;
+  cursor?: string | null;
+  mode?: 'ANY' | 'ACROSS_SCANS';
+  minOccurrences?: number;
+  minScans?: number;
+  entry?: { scanId: number; entryId: number };
+  name?: FileSearchRequest['name'];
+  path?: FileSearchRequest['path'];
+  extensions?: string[];
+  size?: FileSearchRequest['size'];
+  modified?: FileSearchRequest['modified'];
+  errorState?: FileSearchRequest['errorState'];
+  sort?: { field: 'SIZE' | 'OCCURRENCES' | 'SCANS' | 'OBSERVED_BYTES'; direction: 'ASC' | 'DESC' };
+}
+export interface DuplicateGroup {
+  groupId: string;
+  size: string;
+  sha256: string;
+  occurrences: number;
+  scanCount: number;
+  matchingOccurrences: number;
+  errorOccurrences: number;
+  samplePath: string;
+  observedBytes: string;
+}
+export interface DuplicatePage extends Page<DuplicateGroup> {
+  summary: { groups: number; occurrences: string; observedBytes: string };
+  coverage: {
+    files: number; hashedFiles: number; unhashedFiles: number; selectedScans: number;
+    incompleteScans: number; scanErrors: number; persistedHashesOnly: boolean; observationsOnly: boolean;
+  };
+  reference: { scanId: number; entryId: number; filename: string; relativePath: string; sha256: string } | null;
+}
+export interface DuplicateOccurrence extends Entry { matchesFilters: boolean; }
+export interface DuplicateOccurrencePage extends Page<DuplicateOccurrence> { group: DuplicateGroup; }

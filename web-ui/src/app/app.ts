@@ -4,18 +4,19 @@ import { Observable, Subscription, forkJoin } from 'rxjs';
 import { copy } from './copy';
 import { DirectoryTreeComponent } from './directory-tree';
 import { FileSearchComponent } from './file-search';
+import { DuplicateExplorerComponent } from './duplicate-explorer';
 import { InventoryApi } from './inventory.api';
 import {
   ApiError, Breadcrumb, ChildPage, Dashboard, DatabaseStatus, Entry, Page,
   Registration, Scan, ScanError, ScanFilters
 } from './inventory.models';
 
-type View = 'dashboard' | 'scans' | 'scan' | 'explorer' | 'search' | 'errors';
+type View = 'dashboard' | 'scans' | 'scan' | 'explorer' | 'search' | 'duplicates' | 'errors';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [DirectoryTreeComponent, FileSearchComponent],
+  imports: [DirectoryTreeComponent, FileSearchComponent, DuplicateExplorerComponent],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
@@ -38,6 +39,7 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly scanId = signal<number | null>(null);
   readonly directoryId = signal(1);
   readonly searchDirectoryId = signal<number | null>(null);
+  readonly duplicateEntryId = signal<number | null>(null);
   readonly registration = signal<Registration | null>(null);
   readonly status = signal<DatabaseStatus | null>(null);
   readonly dashboard = signal<Dashboard | null>(null);
@@ -88,6 +90,13 @@ export class AppComponent implements OnInit, OnDestroy {
     const path = scanId ? '/search/' + scanId + (entryId ? '/' + entryId : '') : '/search';
     this.navigate(path);
   }
+  openDuplicates(scanId?: number, entryId?: number): void {
+    this.navigate(scanId ? '/duplicates/' + scanId + (entryId ? '/' + entryId : '') : '/duplicates');
+  }
+  findDuplicates(entry: Entry): void {
+    const id = entry.scanId ?? this.scanId();
+    if (id) this.openDuplicates(id, entry.entryId);
+  }
   openErrors(id?: number): void {
     const target = id ?? this.scanId();
     if (target) this.navigate('/scans/' + target + '/errors');
@@ -105,7 +114,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.detailProblem.set(null);
     this.detailLoading.set(true);
     this.detailRequest = this.api.entry(scanId, entry.entryId).subscribe({
-      next: value => { this.selectedEntry.set(value); this.detailLoading.set(false); },
+      next: value => { this.selectedEntry.set({ ...value, scanId, scanName: entry.scanName }); this.detailLoading.set(false); },
       error: failure => { this.detailProblem.set(this.apiError(failure)); this.detailLoading.set(false); }
     });
   }
@@ -187,6 +196,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const parts = path.split('/').filter(Boolean);
     const id = Number(parts[1]), entryId = Number(parts[3]), searchEntryId = Number(parts[2]);
     this.searchDirectoryId.set(null);
+    this.duplicateEntryId.set(null);
     if (parts[0] === 'scans' && parts.length === 1) {
       this.view.set('scans'); this.scanId.set(null);
     } else if (parts[0] === 'search' && parts.length === 1) {
@@ -196,6 +206,13 @@ export class AppComponent implements OnInit, OnDestroy {
                 Number.isSafeInteger(searchEntryId) && searchEntryId > 0))) {
       this.view.set('search'); this.scanId.set(id);
       this.searchDirectoryId.set(parts.length === 3 ? searchEntryId : null);
+    } else if (parts[0] === 'duplicates' && parts.length === 1) {
+      this.view.set('duplicates'); this.scanId.set(null);
+    } else if (parts[0] === 'duplicates' && Number.isSafeInteger(id) && id > 0 &&
+               (parts.length === 2 || (parts.length === 3 &&
+                Number.isSafeInteger(searchEntryId) && searchEntryId > 0))) {
+      this.view.set('duplicates'); this.scanId.set(id);
+      this.duplicateEntryId.set(parts.length === 3 ? searchEntryId : null);
     } else if (parts[0] === 'scans' && Number.isSafeInteger(id) && id > 0 &&
                parts.length === 2) {
       this.view.set('scan'); this.scanId.set(id);
@@ -225,7 +242,7 @@ export class AppComponent implements OnInit, OnDestroy {
         recent: this.api.scans(null, { name: '', phase: '', hasErrors: '' }, 10)
       }), result => { this.dashboard.set(result.metrics); this.scans.set(result.recent); });
     } else if (this.view() === 'scans') this.loadScanPage();
-    else if (this.view() === 'search') this.loading.set(false);
+    else if (this.view() === 'search' || this.view() === 'duplicates') this.loading.set(false);
     else {
       const id = this.scanId();
       if (!id) return;
