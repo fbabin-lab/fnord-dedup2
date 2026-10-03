@@ -1,0 +1,57 @@
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">◆</span>
+      <div><strong>{{ copy.title }}</strong><small>{{ copy.subtitle }}</small></div>
+    </div>
+    <nav [attr.aria-label]="copy.navigation">
+      <p class="nav-caption">{{ copy.navigation }}</p>
+      <span class="nav-item active" aria-current="page">{{ copy.dashboard }}</span>
+      <p class="nav-caption future-caption">{{ copy.upcoming }}</p>
+      @for (section of copy.sections; track section) {
+        <span class="nav-item inactive" aria-disabled="true">{{ section }}</span>
+      }
+    </nav>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <span class="eyebrow">{{ copy.database }}</span>
+      <strong class="database-path">{{ registration()?.path || status()?.path || copy.noDatabase }}</strong>
+      <span class="read-only">{{ copy.readOnly }}</span>
+    </header>
+
+    <div class="content">
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">{{ copy.dashboard }}</p>
+          <h1>{{ copy.overview }}</h1>
+          <p class="lead">{{ copy.description }}</p>
+        </div>
+        <button type="button" (click)="refresh()" [disabled]="loading()">{{ copy.retry }}</button>
+      </div>
+
+      <section class="panel" [attr.aria-label]="copy.status">
+        <div class="panel-heading"><h2>{{ copy.status }}</h2></div>
+        @if (loading()) {
+          <p class="message" role="status">{{ copy.loading }}</p>
+        } @else if (error(); as problem) {
+          <div class="message error" role="alert"><strong>{{ problem.code }}</strong><p>{{ problem.message }}</p></div>
+        } @else if (status(); as state) {
+          <div class="ready"><span class="dot" aria-hidden="true"></span>{{ copy.connected }}</div>
+          <div class="metrics">
+            <div><span>{{ copy.scanCount }}</span><strong>{{ state.scanCount }}</strong></div>
+            <div><span>{{ copy.updated }}</span><strong>{{ state.lastModified }}</strong></div>
+          </div>
+          <h3>{{ copy.schema }}</h3>
+          <dl class="schema-list">
+            <div><dt>{{ copy.base }}</dt><dd>v{{ state.baseSchema }}</dd></div>
+            <div><dt>{{ copy.archive }}</dt><dd>{{ state.archiveSchema === null ? copy.absent : 'v' + state.archiveSchema }}</dd></div>
+            <div><dt>{{ copy.image }}</dt><dd>{{ state.imageSchema === null ? copy.absent : 'v' + state.imageSchema }}</dd></div>
+          </dl>
+        }
+      </section>
+      <p class="next-note">{{ copy.next }}</p>
+    </div>
+  </main>
+</div>

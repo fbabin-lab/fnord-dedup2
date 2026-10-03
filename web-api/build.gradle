@@ -1,0 +1,45 @@
+plugins {
+    id 'groovy'
+    id 'org.springframework.boot' version '4.1.1'
+}
+
+group = 'org.fnord'
+version = '0.1.0'
+
+repositories { mavenCentral() }
+
+dependencies {
+    implementation project(':')
+    implementation platform(org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES)
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'org.apache.groovy:groovy:4.0.33'
+    implementation 'org.duckdb:duckdb_jdbc:1.5.6.0'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+tasks.withType(GroovyCompile).configureEach { groovyOptions.encoding = 'UTF-8' }
+tasks.withType(Test).configureEach { useJUnitPlatform() }
+
+def ui = layout.projectDirectory.dir('../web-ui')
+def npmCommand = System.getProperty('os.name').startsWith('Windows') ? 'npm.cmd' : 'npm'
+tasks.register('installWebUi', Exec) {
+    workingDir ui
+    commandLine npmCommand, 'ci'
+    inputs.files(ui.file('package.json'), ui.file('package-lock.json'))
+    outputs.dir(ui.dir('node_modules'))
+}
+tasks.register('buildWebUi', Exec) {
+    dependsOn 'installWebUi'
+    workingDir ui
+    commandLine npmCommand, 'run', 'build'
+    inputs.dir(ui.dir('src'))
+    inputs.files(ui.file('angular.json'), ui.file('tsconfig.json'), ui.file('tsconfig.app.json'), ui.file('package-lock.json'))
+    outputs.dir(ui.dir('dist/web-ui/browser'))
+}
+tasks.named('processResources') {
+    dependsOn 'buildWebUi'
+    from(ui.dir('dist/web-ui/browser')) { into 'static' }
+}
+
+tasks.named('bootJar') { archiveFileName = 'fnord-dedup2-web.jar' }
