@@ -155,36 +155,7 @@ class FileSearchService {
         clauses.add('e.kind IN (' + (['?'] * kinds.size()).join(',') + ')')
         values.addAll(kinds)
 
-        Map name = spec.name as Map
-        if (name) addNameFilter(clauses, values, name)
-        Map path = spec.path as Map
-        if (path.contains) { clauses.add('contains(e.relative_path, ?)'); values.add(path.contains) }
-        if (path.startsWith) { clauses.add('starts_with(e.relative_path, ?)'); values.add(path.startsWith) }
-        if (path.under) {
-            clauses.add('(e.relative_path=? OR starts_with(e.relative_path, ?))')
-            values.add(path.under); values.add(path.under + '/')
-        }
-        (path.excludes as List<String>).each { String excluded ->
-            clauses.add('NOT (e.relative_path=? OR starts_with(e.relative_path, ?))')
-            values.add(excluded); values.add(excluded + '/')
-        }
-        List<String> extensions = spec.extensions as List<String>
-        if (extensions) {
-            clauses.add('(' + (['ends_with(lower(e.filename), ?)'] * extensions.size()).join(' OR ') + ')')
-            values.addAll(extensions.collect { '.' + it.toLowerCase(Locale.ROOT) })
-        }
-        Map size = spec.size as Map
-        if (size.exact != null) { clauses.add('e.size=?'); values.add(size.exact) }
-        else {
-            if (size.min != null) { clauses.add('e.size>=?'); values.add(size.min) }
-            if (size.max != null) { clauses.add('e.size<=?'); values.add(size.max) }
-        }
-        Map modified = spec.modified as Map
-        if (modified.exact != null) { clauses.add('e.modified_sec=?'); values.add(modified.exact) }
-        else {
-            if (modified.min != null) { clauses.add('e.modified_sec>=?'); values.add(modified.min) }
-            if (modified.max != null) { clauses.add('e.modified_sec<=?'); values.add(modified.max) }
-        }
+        addContentFilters(clauses, values, spec)
         switch (spec.hashState) {
             case 'HASHED': clauses.add('h.sha256 IS NOT NULL'); break
             case 'UNHASHED': clauses.add('h.sha256 IS NULL'); break
@@ -258,6 +229,40 @@ class FileSearchService {
         } else {
             clauses.add(alias + '.parent_id=?')
             values.add(requested.entryId)
+        }
+    }
+
+    /** Shared predicates over the e entry alias; input must already be normalized. */
+    static void addContentFilters(List<String> clauses, List values, Map spec) {
+        Map name = spec.name as Map
+        if (name) addNameFilter(clauses, values, name)
+        Map path = spec.path as Map
+        if (path.contains) { clauses.add('contains(e.relative_path, ?)'); values.add(path.contains) }
+        if (path.startsWith) { clauses.add('starts_with(e.relative_path, ?)'); values.add(path.startsWith) }
+        if (path.under) {
+            clauses.add('(e.relative_path=? OR starts_with(e.relative_path, ?))')
+            values.add(path.under); values.add(path.under + '/')
+        }
+        (path.excludes as List<String>).each { String excluded ->
+            clauses.add('NOT (e.relative_path=? OR starts_with(e.relative_path, ?))')
+            values.add(excluded); values.add(excluded + '/')
+        }
+        List<String> extensions = spec.extensions as List<String>
+        if (extensions) {
+            clauses.add('(' + (['ends_with(lower(e.filename), ?)'] * extensions.size()).join(' OR ') + ')')
+            values.addAll(extensions.collect { '.' + it.toLowerCase(Locale.ROOT) })
+        }
+        Map size = spec.size as Map
+        if (size.exact != null) { clauses.add('e.size=?'); values.add(size.exact) }
+        else {
+            if (size.min != null) { clauses.add('e.size>=?'); values.add(size.min) }
+            if (size.max != null) { clauses.add('e.size<=?'); values.add(size.max) }
+        }
+        Map modified = spec.modified as Map
+        if (modified.exact != null) { clauses.add('e.modified_sec=?'); values.add(modified.exact) }
+        else {
+            if (modified.min != null) { clauses.add('e.modified_sec>=?'); values.add(modified.min) }
+            if (modified.max != null) { clauses.add('e.modified_sec<=?'); values.add(modified.max) }
         }
     }
 

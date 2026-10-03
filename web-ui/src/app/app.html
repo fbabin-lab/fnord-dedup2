@@ -14,6 +14,8 @@
         (click)="openExplorer()">{{ copy.explorer }}</button>
       <button type="button" class="nav-item" [class.active]="view() === 'search'"
         (click)="navigate('/search')">{{ copy.search }}</button>
+      <button type="button" class="nav-item" [class.active]="view() === 'duplicates'"
+        (click)="openDuplicates()">{{ copy.duplicates }}</button>
       <button type="button" class="nav-item" [class.active]="view() === 'errors'"
         (click)="openErrors()">{{ copy.errors }}</button>
       <p class="nav-caption future-caption">{{ copy.upcoming }}</p>
@@ -46,11 +48,13 @@
             <h1>{{ copy.explorer }}</h1><p class="lead">{{ scan()?.name }} · {{ copy.explorerDescription }}</p>
           } @else if (view() === 'search') {
             <h1>{{ copy.search }}</h1><p class="lead">{{ copy.searchDescription }}</p>
+          } @else if (view() === 'duplicates') {
+            <h1>{{ copy.duplicates }}</h1><p class="lead">{{ copy.duplicatesDescription }}</p>
           } @else {
             <h1>{{ copy.errors }}</h1><p class="lead">{{ scan()?.name }} · {{ copy.errorsDescription }}</p>
           }
         </div>
-        @if (view() !== 'search') {
+        @if (view() !== 'search' && view() !== 'duplicates') {
           <button type="button" (click)="refresh()" [disabled]="loading()">{{ copy.retry }}</button>
         }
       </div>
@@ -161,6 +165,7 @@
           <div class="actions-row">
             <button type="button" (click)="openExplorer(current.scanId)">{{ copy.exploreFiles }}</button>
             <button type="button" class="secondary" (click)="openSearch(current.scanId)">{{ copy.searchThisScan }}</button>
+            <button type="button" class="secondary" (click)="openDuplicates(current.scanId)">{{ copy.duplicatesThisScan }}</button>
             <button type="button" class="secondary" (click)="openErrors(current.scanId)">{{ copy.viewErrors }}</button>
           </div>
           <section class="metrics-grid">
@@ -237,6 +242,12 @@
           (scanOpen)="openScan($event)" />
       }
 
+      @if (view() === 'duplicates') {
+        <app-duplicate-explorer [initialScanId]="scanId()" [initialEntryId]="duplicateEntryId()"
+          (entryOpen)="openEntry($event)" (directoryOpen)="openSearchDirectory($event)"
+          (scanOpen)="openScan($event)" (clearReference)="openDuplicates($event)" />
+      }
+
       @if (view() === 'errors') {
         @if (errors(); as result) {
           <section class="panel table-panel">
@@ -276,9 +287,12 @@
               <div><dt>{{ copy.modified }}</dt><dd>{{ formatModified(file) }}</dd></div>
               <div><dt>{{ copy.hashState }}</dt><dd>{{ file.sha256 ? copy.hashed : copy.unknownHash }}</dd></div>
               <div><dt>{{ copy.sha256 }}</dt><dd class="hash-text">{{ file.sha256 || '—' }}</dd></div>
-              <div><dt>{{ copy.confirmedOccurrences }}</dt>
+              <div><dt>{{ copy.databaseOccurrences }}</dt>
                 <dd>{{ file.duplicateCount === null ? copy.unknownHash : file.duplicateCount }}</dd></div>
             </dl>
+            @if (file.kind === 'FILE' && file.sha256) {
+              <button type="button" (click)="findDuplicates(file)">{{ copy.findDuplicates }}</button>
+            }
             @if (file.relatedErrors?.length) {
               <h3>{{ copy.relatedErrors }}</h3>
               @for (issue of file.relatedErrors; track $index) {

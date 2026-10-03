@@ -1,7 +1,8 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import {
-  Breadcrumb, ChildPage, Dashboard, DatabaseStatus, Entry, FileSearchPage,
+  Breadcrumb, ChildPage, Dashboard, DatabaseStatus, DuplicateOccurrencePage,
+  DuplicatePage, DuplicateRequest, Entry, FileSearchPage,
   FileSearchRequest, Page, Registration, SavedSearch, SavedSearchList, Scan,
   ScanError, ScanFilters
 } from './inventory.models';
@@ -42,6 +43,13 @@ export class InventoryApi {
   }
   searchFiles(request: FileSearchRequest) {
     return this.http.post<FileSearchPage>('/api/v1/search/files', request);
+  }
+  duplicateGroups(request: DuplicateRequest) {
+    return this.http.post<DuplicatePage>('/api/v1/duplicates/groups', request);
+  }
+  duplicateOccurrences(groupId: string, request: DuplicateRequest) {
+    return this.http.post<DuplicateOccurrencePage>(
+      '/api/v1/duplicates/groups/' + encodeURIComponent(groupId) + '/occurrences', request);
   }
   savedSearches() { return this.http.get<SavedSearchList>('/api/v1/saved-searches'); }
   createSavedSearch(body: { name: string; description: string; request: FileSearchRequest }) {

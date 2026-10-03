@@ -30,6 +30,11 @@ jobs:
         run: ./gradlew --no-daemon test installDist distTar :web-api:bootJar
       - name: Verify packaged web jar
         run: unzip -t web-api/build/libs/fnord-dedup2-web.jar
+      - name: Install browser for web explorer smoke
+        working-directory: web-ui
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Packaged duplicate explorer HTTP and browser smoke
+        run: node web-ui/scripts/duplicates-smoke.mjs
       - name: Verify build without optional archive runtime
         env:
           FNORD_LIBARCHIVE: /definitely/missing/libarchive.so
@@ -62,6 +67,14 @@ jobs:
         with:
           name: test-reports
           path: build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload web explorer screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-explorer-screenshots
+          path: build/web-ui-smoke/*.png
           if-no-files-found: ignore
           retention-days: 7
       - name: Upload Linux distribution

@@ -1,6 +1,6 @@
-# Web explorer — inventory and file search
+# Web explorer — inventory, file search, and duplicates
 
-The optional Groovy/Spring Boot service and Angular interface are companions to the CLI scanner. They open an existing scanner DuckDB file read-only, display database/schema status, summarize scans, browse recorded directories and files, search the saved inventory, and show recorded filesystem errors. Saved search definitions live in a separate web-owned DuckDB file. No web request starts a scan or reads or modifies source files.
+The optional Groovy/Spring Boot service and Angular interface are companions to the CLI scanner. They open an existing scanner DuckDB file read-only, display database/schema status, summarize scans, browse recorded directories and files, search the saved inventory, explore confirmed duplicate groups, and show recorded filesystem errors. Saved search definitions live in a separate web-owned DuckDB file. No web request starts a scan or reads or modifies source files.
 
 ## Build and run
 
@@ -22,6 +22,7 @@ The scanner path is configured at startup, never supplied in a REST request. `--
 - **File Explorer:** lazy directory tree, breadcrumbs, paged children (directories first), and a file drawer with the saved SHA-256, confirmed occurrence count, and related errors.
 - **File Search:** server-side filters across all scans, selected scans, or a directory; filename contains/starts/ends/exact/glob/explicit-regex modes; path, extension, byte size, modified time, entry type, hash, duplicate, and error filters; stable sorting and bounded pages. Scan and directory pages link directly into a scoped search.
 - **Saved searches:** create, load, update, and delete named filter sets. Definitions are isolated by scanner database identity in the separate web-state database.
+- **Duplicate Explorer:** explicitly select one scan or several scans; view all confirmed groups in that scope or only groups spanning selected scans. Filter by minimum occurrences/scans, filename, path, extension, size, modification time, and recorded errors. Group and occurrence results use separate bounded pages. Scan overview links into a single-scan analysis; a hashed file's details link into its content group, with additional scans selectable.
 - **Errors:** paged filesystem diagnostics for a scan.
 
 All values are historical scanner observations. The UI never verifies whether a source path still exists. A confirmed group requires persisted size and SHA-256; un-hashed files are not called unique.
@@ -41,6 +42,8 @@ All values are historical scanner observations. The UI never verifies whether a 
 | GET /api/v1/scans/{scanId}/entries/{entryId}/breadcrumbs | Bounded ancestry for navigation. |
 | GET /api/v1/scans/{scanId}/errors?limit=100&cursor=... | Bounded scan-error page. |
 | POST /api/v1/search/files | Bounded, server-filtered entry page with a filter-bound keyset cursor and hash-coverage metadata. |
+| POST /api/v1/duplicates/groups | Confirmed groups in an explicit selected scan scope, aggregate totals, and hash/discovery/error coverage. |
+| POST /api/v1/duplicates/groups/{groupId}/occurrences | Every occurrence of a qualifying group in the same selected scope, with filter-match flags and a separate cursor. |
 | GET /api/v1/saved-searches | Up to 500 saved searches belonging to the configured scanner database. |
 | POST /api/v1/saved-searches | Create a saved search from `{name, description, request}`. |
 | GET /api/v1/saved-searches/{id} | Read one saved search. |
@@ -55,6 +58,20 @@ All filter values and cursors are validated and bound as JDBC parameters. Dynami
 
 The web-state database has its own schema, connection, and lifetime-held `.lock`. It stores only normalized saved-search JSON and scanner path identities. The application rejects a state path that aliases the scanner database and never writes saved-search tables into scanner data.
 
+## Duplicate groups and scope
+
+`POST /api/v1/duplicates/groups` requires `scanIds` (one to 1,000 IDs). No selection never means all scans. `mode: "ANY"` includes any confirmed group within the selected inventories; `mode: "ACROSS_SCANS"` requires at least two selected scans and returns only groups spanning at least two of them. `minOccurrences` defaults to 2 and `minScans` to 1. Each group requires identical persisted size and SHA-256 among regular filesystem entries. Archive members and image guest files are outside this view.
+
+Filename, path, extension, size, modification-time, and error filters use the file-search representations. They select a group when at least one occurrence satisfies all those filters. Group counts always cover **all** occurrences in the selected scans. The occurrence endpoint returns those full groups with `matchesFilters` flags, so a filename filter cannot hide another copy. An optional `entry: {scanId, entryId}` restricts groups to that recorded file's content; its scan must be selected, and a missing hash returns `HASH_UNAVAILABLE`, not an empty uniqueness claim.
+
+Group sort fields are `SIZE`, `OCCURRENCES`, `SCANS`, and `OBSERVED_BYTES`, with `ASC` or `DESC` direction. The default is size descending. Stable ties use size and digest. Occurrences order by scan ID, relative path, and entry ID. Both endpoints accept `limit` (1–500) and return independent keyset cursors bound to the normalized scope and filters; occurrence cursors also bind to the group ID. Supply the same request body when paging or opening an occurrence page. Group IDs use `size:sha256` and identify content, not a permanent selected-scope result. Counts may change after a CLI run; cursors are transient.
+
+Group responses include `summary` across all qualifying groups, not just the page, plus selected-scope coverage (`files`, `hashedFiles`, `unhashedFiles`, `incompleteScans`, and `scanErrors`). Byte totals use decimal strings and wide arithmetic. `observedBytes` is size multiplied by recorded occurrences. It is **not** an estimate of reclaimable space: overlapping scans and repeated historical observations can represent the same physical file. The file drawer's occurrence count is explicitly labeled as database-wide; group counts use only the selected scans. Scenarios and cleanup decisions are later milestones.
+
+This view never runs CLI cross-scan verification or calculates missing hashes. Use the CLI's explicit hashing or cross-scan command, then refresh the analysis. The CLI's exclusive lock still applies. Saved hashes work with offline or foreign-platform roots because the UI only joins portable stored paths.
+
 ## Verification
 
-InventoryServiceTest uses actual scanner-created DuckDB databases to check scan pages, directory cursors, breadcrumbs, duplicate counts, incomplete hash coverage, error pages, input validation, and CLI lock contention. FileSearchServiceTest covers search modes, scope, duplicate/hash semantics, error filters, stable bound cursors, regex validation, and parameter safety against real DuckDB data. WebStateStoreTest covers CRUD persistence, scanner isolation, lock contention, state/scanner path rejection, and unchanged scanner bytes. ScannerDatabaseTest covers read-only connections and schema rejection. The repository's process, rollback, archive, image, and Windows CI checks continue to apply.
+After building the distribution and web jar, `node web-ui/scripts/duplicates-smoke.mjs --http-only` checks the packaged API against generated scanner fixtures and verifies unchanged scanner bytes. For full browser checks, run `npx --no-install playwright install --with-deps chromium` from `web-ui/`, then run the script without `--http-only`. Linux CI covers scan selection, filters, occurrence pagination, cross-scan file-detail links, same-component route changes, and mobile width; it uploads desktop/mobile screenshots. Browser dependencies are development-only and do not enter the production Angular bundle.
+
+InventoryServiceTest uses actual scanner-created DuckDB databases to check scan pages, directory cursors, breadcrumbs, duplicate counts, incomplete hash coverage, error pages, input validation, and CLI lock contention. FileSearchServiceTest covers search modes, scope, duplicate/hash semantics, error filters, stable bound cursors, regex validation, and parameter safety against real DuckDB data. DuplicateServiceTest covers scope isolation, cross-scan groups, equal-size different hashes, zero-byte groups, group-selection filter semantics, both cursor types, reference files, unresolved hashes, exact large byte totals, offline/foreign roots, scanner locks, and unchanged scanner bytes. WebStateStoreTest covers CRUD persistence, scanner isolation, lock contention, state/scanner path rejection, and unchanged scanner bytes. ScannerDatabaseTest covers read-only connections and schema rejection. The repository's process, rollback, archive, image, and Windows CI checks continue to apply.
