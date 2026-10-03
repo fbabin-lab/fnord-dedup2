@@ -4,7 +4,7 @@ Duplicate-file analysis in **Groovy**, with a **CLI**, a **synchronous scripting
 
 The application never deletes, moves, hard-links, or rewrites source files. Container analysis writes only disposable temporary data.
 
-An optional [web explorer](docs/WEB_UI.md) is being built as a separate Spring Boot/Groovy module with an Angular UI. The first milestone reports database and schema status safely; the CLI remains the scanner.
+An optional [web explorer](docs/WEB_UI.md) is a separate Spring Boot/Groovy module with an Angular UI. It browses scans, recorded directories and files, and filesystem errors; the CLI remains the scanner.
 
 ## Platforms
 

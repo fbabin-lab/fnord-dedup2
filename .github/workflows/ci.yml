@@ -28,6 +28,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libarchive13t64 python3 zip p7zip-full
       - name: Build and unit/integration tests
         run: ./gradlew --no-daemon test installDist distTar :web-api:bootJar
+      - name: Verify packaged web jar
+        run: unzip -t web-api/build/libs/fnord-dedup2-web.jar
       - name: Verify build without optional archive runtime
         env:
           FNORD_LIBARCHIVE: /definitely/missing/libarchive.so

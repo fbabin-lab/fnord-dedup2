@@ -1,5 +1,7 @@
 # Architecture and extension contract
 
+The optional web-api module serves the Angular production build and queries scanner DuckDB under the CLI sidecar lock. Each request opens a read-only JDBC connection, validates schema versions, returns bounded rows or aggregate counts, and closes the connection. Concurrent requests in one web process serialize before taking the exclusive lock. No source file is opened and no scanner table is written. The web interface currently covers scan summaries, directory navigation, file details, and filesystem errors; see docs/WEB_UI.md.
+
 ## Layers
 
 `fnord.dedup.cli` maps picocli commands to the public `Dedup` API. The CLI owns signal handling and presentation. `Dedup` owns the synchronous orchestration and is also the scripting entry point. `DiscoveryEngine` owns metadata traversal. `HashEngine` owns candidate dispatch and result validation. `FileHasher` is a thread-safe digest-provider interface; the initial provider is JDK SHA-256. `DuckStore` owns the schema and parameterized analytical queries. `BulkWriter` owns primitive appender writes and transactional checkpoints. These boundaries permit alternate traversal and checksum implementations without moving CLI logic into storage or worker threads.

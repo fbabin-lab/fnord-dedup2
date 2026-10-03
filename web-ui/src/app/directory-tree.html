@@ -1,0 +1,15 @@
+<div class="tree-title">{{ copy.directoryTree }}</div>
+@for (node of visible(); track node.entryId) {
+  <div class="tree-row" [style.padding-left.px]="node.depth * 13">
+    <button type="button" class="tree-toggle" (click)="toggle(node)"
+      [attr.aria-label]="(node.expanded ? copy.collapse : copy.expand) + node.name">
+      {{ node.loading ? '…' : node.expanded ? '▾' : '▸' }}
+    </button>
+    <button type="button" class="tree-name" [class.current]="node.entryId === activeEntryId"
+      (click)="open.emit(node.entryId)" [title]="node.name">{{ node.name }}</button>
+    @if (node.expanded && node.nextCursor) {
+      <button type="button" class="tree-more" (click)="load(node)" [disabled]="node.loading">{{ copy.more }}</button>
+    }
+  </div>
+  @if (node.error) { <div class="tree-error" role="alert">{{ node.error }}</div> }
+}

@@ -6,9 +6,16 @@
     </div>
     <nav [attr.aria-label]="copy.navigation">
       <p class="nav-caption">{{ copy.navigation }}</p>
-      <span class="nav-item active" aria-current="page">{{ copy.dashboard }}</span>
+      <button type="button" class="nav-item" [class.active]="view() === 'dashboard'"
+        (click)="navigate('/dashboard')">{{ copy.dashboard }}</button>
+      <button type="button" class="nav-item" [class.active]="view() === 'scans' || view() === 'scan'"
+        (click)="navigate('/scans')">{{ copy.scans }}</button>
+      <button type="button" class="nav-item" [class.active]="view() === 'explorer'"
+        (click)="openExplorer()">{{ copy.explorer }}</button>
+      <button type="button" class="nav-item" [class.active]="view() === 'errors'"
+        (click)="openErrors()">{{ copy.errors }}</button>
       <p class="nav-caption future-caption">{{ copy.upcoming }}</p>
-      @for (section of copy.sections; track section) {
+      @for (section of copy.futureSections; track section) {
         <span class="nav-item inactive" aria-disabled="true">{{ section }}</span>
       }
     </nav>
@@ -17,41 +24,256 @@
   <main class="main">
     <header class="topbar">
       <span class="eyebrow">{{ copy.database }}</span>
-      <strong class="database-path">{{ registration()?.path || status()?.path || copy.noDatabase }}</strong>
+      <strong class="database-path" [title]="registration()?.path || status()?.path || ''">
+        {{ registration()?.path || status()?.path || copy.noDatabase }}
+      </strong>
       <span class="read-only">{{ copy.readOnly }}</span>
     </header>
 
     <div class="content">
       <div class="page-heading">
         <div>
-          <p class="eyebrow">{{ copy.dashboard }}</p>
-          <h1>{{ copy.overview }}</h1>
-          <p class="lead">{{ copy.description }}</p>
+          <p class="eyebrow">{{ copy.title }}</p>
+          @if (view() === 'dashboard') {
+            <h1>{{ copy.overview }}</h1><p class="lead">{{ copy.description }}</p>
+          } @else if (view() === 'scans') {
+            <h1>{{ copy.scans }}</h1><p class="lead">{{ copy.scansDescription }}</p>
+          } @else if (view() === 'scan') {
+            <h1>{{ scan()?.name || copy.scanDetail }}</h1><p class="lead path-text">{{ scan()?.root }}</p>
+          } @else if (view() === 'explorer') {
+            <h1>{{ copy.explorer }}</h1><p class="lead">{{ scan()?.name }} · {{ copy.explorerDescription }}</p>
+          } @else {
+            <h1>{{ copy.errors }}</h1><p class="lead">{{ scan()?.name }} · {{ copy.errorsDescription }}</p>
+          }
         </div>
         <button type="button" (click)="refresh()" [disabled]="loading()">{{ copy.retry }}</button>
       </div>
 
-      <section class="panel" [attr.aria-label]="copy.status">
-        <div class="panel-heading"><h2>{{ copy.status }}</h2></div>
-        @if (loading()) {
-          <p class="message" role="status">{{ copy.loading }}</p>
-        } @else if (error(); as problem) {
-          <div class="message error" role="alert"><strong>{{ problem.code }}</strong><p>{{ problem.message }}</p></div>
-        } @else if (status(); as state) {
-          <div class="ready"><span class="dot" aria-hidden="true"></span>{{ copy.connected }}</div>
-          <div class="metrics">
-            <div><span>{{ copy.scanCount }}</span><strong>{{ state.scanCount }}</strong></div>
-            <div><span>{{ copy.updated }}</span><strong>{{ state.lastModified }}</strong></div>
-          </div>
-          <h3>{{ copy.schema }}</h3>
-          <dl class="schema-list">
-            <div><dt>{{ copy.base }}</dt><dd>v{{ state.baseSchema }}</dd></div>
-            <div><dt>{{ copy.archive }}</dt><dd>{{ state.archiveSchema === null ? copy.absent : 'v' + state.archiveSchema }}</dd></div>
-            <div><dt>{{ copy.image }}</dt><dd>{{ state.imageSchema === null ? copy.absent : 'v' + state.imageSchema }}</dd></div>
-          </dl>
+      @if (statusProblem(); as statusIssue) {
+        <div class="message error" role="alert">
+          <strong>{{ statusIssue.code }}</strong> {{ statusIssue.message }}
+        </div>
+      }
+      @if (loading()) { <p class="message" role="status">{{ copy.loading }}</p> }
+      @if (problem(); as issue) {
+        <div class="message error" role="alert"><strong>{{ issue.code }}</strong> {{ issue.message }}</div>
+      }
+
+      @if (view() === 'dashboard') {
+        @if (dashboard(); as metrics) {
+          <section class="metrics-grid" [attr.aria-label]="copy.overview">
+            <div class="metric"><span>{{ copy.scans }}</span><strong>{{ metrics.scans }}</strong></div>
+            <div class="metric"><span>{{ copy.entries }}</span><strong>{{ metrics.inventory.entries }}</strong></div>
+            <div class="metric"><span>{{ copy.files }}</span><strong>{{ metrics.inventory.files }}</strong></div>
+            <div class="metric"><span>{{ copy.totalFileBytes }}</span><strong>{{ formatBytes(metrics.inventory.fileBytes) }}</strong></div>
+            <div class="metric"><span>{{ copy.hashes }}</span><strong>{{ metrics.hashesCompleted }}</strong></div>
+            <div class="metric"><span>{{ copy.duplicateGroups }}</span><strong>{{ metrics.confirmedDuplicateGroups }}</strong></div>
+            <div class="metric"><span>{{ copy.errors }}</span><strong>{{ metrics.scanErrors }}</strong></div>
+            @if (metrics.archiveRuns !== null) {
+              <div class="metric"><span>{{ copy.archiveRuns }}</span><strong>{{ metrics.archiveRuns }}</strong></div>
+            }
+            @if (metrics.imageRuns !== null) {
+              <div class="metric"><span>{{ copy.imageRuns }}</span><strong>{{ metrics.imageRuns }}</strong></div>
+            }
+          </section>
+          <p class="hint">{{ copy.hashWarning }}</p>
+          <section class="panel">
+            <div class="section-heading">
+              <h2>{{ copy.recentScans }}</h2>
+              <button type="button" class="secondary" (click)="navigate('/scans')">{{ copy.viewAllScans }}</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>{{ copy.name }}</th><th>{{ copy.phase }}</th>
+                  <th class="number">{{ copy.files }}</th><th class="number">{{ copy.errors }}</th>
+                  <th>{{ copy.updated }}</th></tr></thead>
+                <tbody>
+                  @for (item of scans()?.items ?? []; track item.scanId) {
+                    <tr><td><button type="button" class="text-action" (click)="openScan(item.scanId)">{{ item.name }}</button></td>
+                      <td><span class="badge">{{ item.phase }}</span></td>
+                      <td class="number">{{ item.files }}</td><td class="number">{{ item.errors }}</td>
+                      <td>{{ formatDate(item.updatedAt) }}</td></tr>
+                  } @empty { <tr><td colspan="5" class="empty">{{ copy.noScans }}</td></tr> }
+                </tbody>
+              </table>
+            </div>
+          </section>
         }
-      </section>
-      <p class="next-note">{{ copy.next }}</p>
+      }
+
+      @if (view() === 'scans') {
+        <form class="filter-bar" (submit)="applyScanFilters($event)">
+          <label>{{ copy.name }} <input type="search" [value]="scanFilters.name"
+            (input)="scanFilters.name = $any($event.target).value" [placeholder]="copy.filterName"></label>
+          <label>{{ copy.phase }}
+            <select [value]="scanFilters.phase" (change)="scanFilters.phase = $any($event.target).value">
+              <option value="">{{ copy.allPhases }}</option>
+              @for (phase of copy.phases; track phase) { <option [value]="phase">{{ phase }}</option> }
+            </select>
+          </label>
+          <label>{{ copy.errorFilter }}
+            <select [value]="scanFilters.hasErrors" (change)="scanFilters.hasErrors = $any($event.target).value">
+              <option value="">{{ copy.allScans }}</option>
+              <option value="true">{{ copy.withErrors }}</option>
+              <option value="false">{{ copy.withoutErrors }}</option>
+            </select>
+          </label>
+          <button type="submit">{{ copy.apply }}</button>
+        </form>
+        @if (scans(); as result) {
+          <section class="panel table-panel">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>{{ copy.name }}</th><th>{{ copy.root }}</th><th>{{ copy.phase }}</th>
+                  <th class="number">{{ copy.files }}</th><th class="number">{{ copy.directories }}</th>
+                  <th class="number">{{ copy.totalFileBytes }}</th><th class="number">{{ copy.hashes }}</th>
+                  <th class="number">{{ copy.errors }}</th><th>{{ copy.actions }}</th></tr></thead>
+                <tbody>
+                  @for (item of result.items; track item.scanId) {
+                    <tr><td><button type="button" class="text-action" (click)="openScan(item.scanId)">{{ item.name }}</button></td>
+                      <td class="path-text">{{ item.root }}</td><td><span class="badge">{{ item.phase }}</span></td>
+                      <td class="number">{{ item.files }}</td><td class="number">{{ item.directories }}</td>
+                      <td class="number">{{ formatBytes(item.fileBytes) }}</td>
+                      <td class="number">{{ item.hashesCompleted }}</td><td class="number">{{ item.errors }}</td>
+                      <td class="actions"><button type="button" class="text-action" (click)="openExplorer(item.scanId)">{{ copy.explore }}</button>
+                        <button type="button" class="text-action" (click)="openErrors(item.scanId)">{{ copy.errors }}</button></td></tr>
+                  } @empty { <tr><td colspan="9" class="empty">{{ copy.noScans }}</td></tr> }
+                </tbody>
+              </table>
+            </div>
+            <div class="pagination">
+              <button type="button" class="secondary" (click)="previousScans()" [disabled]="loading() || !canPreviousScans()">{{ copy.previous }}</button>
+              <span>{{ result.items.length }} {{ copy.onPage }}</span>
+              <button type="button" class="secondary" (click)="nextScans()" [disabled]="loading() || !result.page.hasMore">{{ copy.next }}</button>
+            </div>
+          </section>
+        }
+      }
+
+      @if (view() === 'scan') {
+        @if (scan(); as current) {
+          <div class="actions-row">
+            <button type="button" (click)="openExplorer(current.scanId)">{{ copy.exploreFiles }}</button>
+            <button type="button" class="secondary" (click)="openErrors(current.scanId)">{{ copy.viewErrors }}</button>
+          </div>
+          <section class="metrics-grid">
+            <div class="metric"><span>{{ copy.files }}</span><strong>{{ current.files }}</strong></div>
+            <div class="metric"><span>{{ copy.directories }}</span><strong>{{ current.directories }}</strong></div>
+            <div class="metric"><span>{{ copy.otherEntries }}</span><strong>{{ current.symlinks + current.otherEntries }}</strong></div>
+            <div class="metric"><span>{{ copy.totalFileBytes }}</span><strong>{{ formatBytes(current.fileBytes) }}</strong></div>
+            <div class="metric"><span>{{ copy.hashes }}</span><strong>{{ current.hashesCompleted }}</strong></div>
+            <div class="metric"><span>{{ copy.duplicateGroups }}</span><strong>{{ current.confirmedDuplicateGroups }}</strong></div>
+            <div class="metric"><span>{{ copy.pendingDirectories }}</span><strong>{{ current.pendingDirectories }}</strong></div>
+            <div class="metric"><span>{{ copy.errors }}</span><strong>{{ current.errors }}</strong></div>
+          </section>
+          <section class="panel">
+            <h2>{{ copy.scanDetail }}</h2>
+            <dl class="detail-list">
+              <div><dt>{{ copy.root }}</dt><dd class="path-text">{{ current.root }}</dd></div>
+              <div><dt>{{ copy.phase }}</dt><dd>{{ current.phase }}</dd></div>
+              <div><dt>{{ copy.algorithm }}</dt><dd>{{ current.algorithm }}</dd></div>
+              <div><dt>{{ copy.created }}</dt><dd>{{ formatDate(current.createdAt) }}</dd></div>
+              <div><dt>{{ copy.updated }}</dt><dd>{{ formatDate(current.updatedAt) }}</dd></div>
+            </dl>
+          </section>
+          <p class="hint">{{ copy.hashWarning }}</p>
+        }
+      }
+
+      @if (view() === 'explorer') {
+        @if (children(); as listing) {
+          <nav class="breadcrumbs" [attr.aria-label]="copy.breadcrumbs">
+            @for (part of breadcrumbs(); track part.entryId; let last = $last) {
+              <button type="button" (click)="openDirectory(part.entryId)"
+                [attr.aria-current]="last ? 'location' : null">{{ part.name }}</button>
+              @if (!last) { <span aria-hidden="true">/</span> }
+            }
+          </nav>
+          <div class="explorer-layout">
+            <aside class="tree-panel">
+              <app-directory-tree [scanId]="scanId()!" [rootName]="scan()?.name || copy.root"
+                [activeEntryId]="directoryId()" (open)="openDirectory($event)" />
+            </aside>
+            <section class="panel listing-panel">
+              <div class="section-heading"><div><h2 class="path-text">{{ listing.directory.path }}</h2>
+                <p class="hint">{{ copy.directoryHint }}</p></div></div>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>{{ copy.name }}</th><th>{{ copy.type }}</th><th class="number">{{ copy.size }}</th>
+                    <th>{{ copy.modified }}</th><th>{{ copy.hashState }}</th></tr></thead>
+                  <tbody>
+                    @for (item of listing.items; track item.entryId) {
+                      <tr><td><button type="button" class="text-action file-name" (click)="openEntry(item)">
+                        <span aria-hidden="true">{{ item.kind === 'DIRECTORY' ? '▸' : '•' }}</span>
+                        {{ item.filename }}</button></td><td>{{ item.kind }}</td>
+                        <td class="number">{{ item.kind === 'FILE' ? formatBytes(item.size) : '—' }}</td>
+                        <td>{{ formatModified(item) }}</td>
+                        <td>{{ item.kind === 'FILE' ? (item.sha256 ? copy.hashed : copy.unknownHash) : '—' }}</td></tr>
+                    } @empty { <tr><td colspan="5" class="empty">{{ copy.emptyDirectory }}</td></tr> }
+                  </tbody>
+                </table>
+              </div>
+              <div class="pagination">
+                <button type="button" class="secondary" (click)="previousDirectory()" [disabled]="loading() || !canPreviousDirectory()">{{ copy.previous }}</button>
+                <span>{{ listing.items.length }} {{ copy.onPage }}</span>
+                <button type="button" class="secondary" (click)="nextDirectory()" [disabled]="loading() || !listing.page.hasMore">{{ copy.next }}</button>
+              </div>
+            </section>
+          </div>
+          @if (detailLoading() || selectedEntry() || detailProblem()) {
+            <div class="drawer-backdrop" (click)="closeEntry()"></div>
+            <aside class="detail-drawer" role="dialog" [attr.aria-label]="copy.fileDetails">
+              <div class="section-heading"><h2>{{ copy.fileDetails }}</h2>
+                <button type="button" class="secondary" (click)="closeEntry()">{{ copy.close }}</button></div>
+              @if (detailLoading()) { <p class="message">{{ copy.loading }}</p> }
+              @if (detailProblem(); as issue) { <p class="message error" role="alert">{{ issue.message }}</p> }
+              @if (selectedEntry(); as file) {
+                <h3 class="file-name">{{ file.filename }}</h3>
+                <dl class="detail-list">
+                  <div><dt>{{ copy.path }}</dt><dd class="path-text">{{ file.path }}</dd></div>
+                  <div><dt>{{ copy.relativePath }}</dt><dd class="path-text">{{ file.relativePath }}</dd></div>
+                  <div><dt>{{ copy.type }}</dt><dd>{{ file.kind }}</dd></div>
+                  <div><dt>{{ copy.size }}</dt><dd>{{ formatBytes(file.size) }} ({{ file.size }} {{ copy.bytes }})</dd></div>
+                  <div><dt>{{ copy.modified }}</dt><dd>{{ formatModified(file) }}</dd></div>
+                  <div><dt>{{ copy.hashState }}</dt><dd>{{ file.sha256 ? copy.hashed : copy.unknownHash }}</dd></div>
+                  <div><dt>{{ copy.sha256 }}</dt><dd class="hash-text">{{ file.sha256 || '—' }}</dd></div>
+                  <div><dt>{{ copy.confirmedOccurrences }}</dt>
+                    <dd>{{ file.duplicateCount === null ? copy.unknownHash : file.duplicateCount }}</dd></div>
+                </dl>
+                @if (file.relatedErrors?.length) {
+                  <h3>{{ copy.relatedErrors }}</h3>
+                  @for (issue of file.relatedErrors; track $index) {
+                    <p class="related-error">{{ issue.phase }} · {{ issue.message }}</p>
+                  }
+                }
+                <p class="hint">{{ copy.historicalObservation }}</p>
+              }
+            </aside>
+          }
+        }
+      }
+
+      @if (view() === 'errors') {
+        @if (errors(); as result) {
+          <section class="panel table-panel">
+            <div class="table-wrap"><table>
+              <thead><tr><th>{{ copy.phase }}</th><th>{{ copy.relativePath }}</th>
+                <th>{{ copy.message }}</th><th>{{ copy.recorded }}</th></tr></thead>
+              <tbody>
+                @for (issue of result.items; track $index) {
+                  <tr><td>{{ issue.phase }}</td><td class="path-text">{{ issue.relativePath }}</td>
+                    <td>{{ issue.message }}</td><td>{{ formatErrorDate(issue.recordedAtMs) }}</td></tr>
+                } @empty { <tr><td colspan="4" class="empty">{{ copy.noErrors }}</td></tr> }
+              </tbody>
+            </table></div>
+            <div class="pagination">
+              <button type="button" class="secondary" (click)="previousErrors()" [disabled]="loading() || !canPreviousErrors()">{{ copy.previous }}</button>
+              <span>{{ result.items.length }} {{ copy.onPage }}</span>
+              <button type="button" class="secondary" (click)="nextErrors()" [disabled]="loading() || !result.page.hasMore">{{ copy.next }}</button>
+            </div>
+          </section>
+        }
+      }
     </div>
   </main>
 </div>
