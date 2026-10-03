@@ -84,10 +84,20 @@ async function main() {
     await page.getByRole('button', { name: 'Apply duplicate filters', exact: true }).click();
     await page.getByRole('alert').filter({ hasText: 'Select at least one scan.' }).waitFor();
     await page.getByLabel('Selected scans', { exact: true }).selectOption(['1', '2']);
-    await page.getByLabel('Group scope', { exact: true }).selectOption('ACROSS_SCANS');
+    // Nested select options are part of a wrapping label's text for getByLabel.
+    await page.getByLabel(/^Page size/).selectOption({ label: '50' });
+    await page.getByRole('button', { name: 'Apply duplicate filters', exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.results-panel tbody tr').length === 50);
+    const groupsPanel = page.locator('.results-panel');
+    await groupsPanel.getByRole('button', { name: 'Next', exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.results-panel tbody tr').length === 2);
+    await groupsPanel.getByRole('button', { name: 'Previous', exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.results-panel tbody tr').length === 50);
+    await page.getByLabel(/^Page size/).selectOption({ label: '100' });
+    await page.getByLabel(/^Group scope/).selectOption('ACROSS_SCANS');
     await page.locator('summary').filter({ hasText: 'Names and paths' }).click();
     await page.getByLabel('Filename value', { exact: true }).fill('shared-one.txt');
-    await page.getByLabel('Name match', { exact: true }).selectOption('EXACT');
+    await page.getByLabel(/^Name match/).selectOption('EXACT');
     await page.getByRole('button', { name: 'Apply duplicate filters', exact: true }).click();
     await page.getByRole('button', { name: 'View occurrences', exact: true }).waitFor();
     const row = page.locator('.results-panel tbody tr').first();
@@ -120,7 +130,14 @@ async function main() {
     await page.screenshot({ path: path.join(output, 'duplicates-mobile.png'), fullPage: true });
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'mobile page width');
     assert.deepEqual(runtimeErrors, []);
-    console.log('PASS: browser scope selection, filters, occurrence paging, cross-scan file links, route changes, and mobile layout');
+    console.log('PASS: browser scope selection, filters, group/occurrence paging, cross-scan file links, route changes, and mobile layout');
+  } catch (error) {
+    const page = browser?.contexts()[0]?.pages()[0];
+    if (page) {
+      console.error('Page labels at failure:', await page.locator('label').allTextContents());
+      await page.screenshot({ path: path.join(output, 'duplicates-failure.png'), fullPage: true });
+    }
+    throw error;
   } finally {
     try { if (browser) await browser.close(); }
     finally {
