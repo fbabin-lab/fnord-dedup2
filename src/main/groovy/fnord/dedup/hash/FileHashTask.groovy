@@ -19,7 +19,7 @@ final class FileHashTask {
     }
 
     static Map calculate(Map candidate, Path root, FileHasher hasher, StopToken stop, int bufferBytes) {
-        Map result = [entry_id:candidate.entry_id, relative_path:candidate.relative_path]
+        Map result = [entry_id:candidate.entry_id, relative_path:candidate.relative_path, existing_sha256:candidate.existing_sha256]
         try {
             stop.check()
             Path path = StoredPath.resolve(root, candidate.relative_path as String)
