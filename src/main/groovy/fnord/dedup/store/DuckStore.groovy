@@ -107,6 +107,11 @@ class DuckStore implements AutoCloseable {
         if (normalized == database || normalized == Path.of(database.toString() + '.wal') ||
             normalized == Path.of(database.toString() + '.lock') || normalized.startsWith(tempDirectory)) return true
         if (StoredPath.windowsHost()) {
+            try {
+                Path canonical = NativeFiles.canonicalControlPath(normalized)
+                if (canonical == database || canonical == Path.of(database.toString()+'.wal') ||
+                    canonical == Path.of(database.toString()+'.lock') || canonical.startsWith(tempDirectory)) return true
+            } catch (IOException | SecurityException ignored) { /* Traversal reports inaccessible paths. */ }
             // Existing aliases/hardlinks of active DB/control files must not enter the inventory.
             for (Path control : [database, Path.of(database.toString()+'.wal'), Path.of(database.toString()+'.lock')]) {
                 try { if (Files.isSameFile(normalized, control)) return true }

@@ -46,6 +46,12 @@ class HardenedStoredPathTest {
         assert Files.isSameFile(child,StoredPath.materialize(stored,relative))
         assert StoredPath.storeRelative(root,root)==''
     }
+    @Test void nonexistentControlSuffixUsesItsCanonicalExistingParent() {
+        Path parent=Files.createDirectory(work.resolve('control parent'))
+        Path control=parent.resolve('scan.duckdb.tmp').resolve('not-yet-created')
+        assert NativeFiles.canonicalControlPath(control)==parent.toRealPath().resolve('scan.duckdb.tmp/not-yet-created')
+        assert !Files.exists(parent.resolve('scan.duckdb.tmp'))
+    }
     @Test void aJunctionLikeAttributeIsNeverClassifiedAsDirectory() {
         BasicFileAttributes attrs=[isSymbolicLink:{false},isOther:{true},isDirectory:{true},isRegularFile:{false}] as BasicFileAttributes
         assert NativeFiles.kind(attrs)=='OTHER'
