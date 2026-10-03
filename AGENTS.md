@@ -7,7 +7,7 @@ Use Groovy for application code, Java 21, and pinned dependencies. Keep hot loop
 Critical filesystem invariants:
 
 1. Never delete, move, hardlink or rewrite source files. Never execute filenames or untrusted values through a shell.
-2. Discovery finishes before ordinary hashing starts. Ordinary hash candidates are regular files in a repeated-size group within that scan. Archive and image analysis are separately explicit phases; all readable regular members receive full hashes.
+2. Discovery finishes before ordinary hashing starts. Plain ordinary hash candidates are missing hashes in a repeated-size group within that scan. `--rehash` targets only existing saved hashes; `--hash-complete` targets all missing regular-file hashes; together they cover all regular files. Rehash must not delete the old digest before a successful validated replacement. Archive and image analysis are separately explicit phases; all readable regular members receive full hashes.
 3. Persist directory inventory, child work, completions and active checkpoint in one transaction. Partial-parent replay deletes only that parent's immediate-child inventory/work. Children cannot run before parent completion.
 4. Only the coordinator owns JDBC. Workers return values. Persist only complete ordinary hashes; do not introduce per-file pending/running checksum tasks.
 5. Keep bounded pages/queues/buffers. Do not replace appender ingestion with per-file commits or load entire trees/results into JVM collections. Appenders require an activated native transaction before use: execute SQL after disabling autocommit. Match numeric appends to SQL column types, not incidental JSON types.
