@@ -98,7 +98,10 @@ async function main() {
     await page.locator('summary').filter({ hasText: 'Names and paths' }).click();
     await page.getByLabel('Filename value', { exact: true }).fill('shared-one.txt');
     await page.getByLabel(/^Name match/).selectOption('EXACT');
+    const filteredResponse = page.waitForResponse(response => response.url().endsWith('/api/v1/duplicates/groups') && response.request().method() === 'POST');
     await page.getByRole('button', { name: 'Apply duplicate filters', exact: true }).click();
+    assert.equal((await filteredResponse).status(), 200);
+    await page.waitForFunction(() => document.querySelectorAll('.results-panel tbody tr').length === 1);
     await page.getByRole('button', { name: 'View occurrences', exact: true }).waitFor();
     const row = page.locator('.results-panel tbody tr').first();
     assert.equal(await row.locator('td').nth(2).textContent(), '114');
@@ -114,9 +117,11 @@ async function main() {
     await page.getByRole('button', { name: 'Find duplicates', exact: true }).click();
     await page.waitForURL(/#\/duplicates\/2\/[0-9]+$/);
     await page.getByRole('button', { name: 'Show all groups', exact: true }).waitFor();
-    await page.getByRole('button', { name: 'View occurrences', exact: true }).waitFor();
+    await page.waitForFunction(() => document.querySelector('.results-panel tbody tr td:nth-child(3)')?.textContent === '2');
     assert.equal(await page.locator('.results-panel tbody tr td').nth(2).textContent(), '2');
+    const clearedResponse = page.waitForResponse(response => response.url().endsWith('/api/v1/duplicates/groups') && response.request().method() === 'POST');
     await page.getByRole('button', { name: 'Show all groups', exact: true }).click();
+    assert.equal((await clearedResponse).status(), 200);
     await page.waitForURL(/#\/duplicates\/2$/);
     await page.getByRole('button', { name: 'View occurrences', exact: true }).waitFor();
     await page.getByRole('button', { name: 'View occurrences', exact: true }).click();
