@@ -46,6 +46,14 @@ Discovery records paths, filenames, types, sizes and modification dates without 
 
 Use `scan --discover-only` then `hash --name ...` to separate the phases. Stop with Ctrl+C and continue with `resume --name ...`. Completed hashes are reused; interrupted work is redone. Resume continues the saved inventory; it does not refresh changed directories.
 
+Hash selection modes are explicit:
+- plain `hash --name NAME` hashes only missing regular files whose size repeats inside that scan;
+- `--rehash` recomputes only files that already have saved hashes, replacing an old digest only after a successful validated read;
+- `--hash-complete` hashes every regular file still missing a hash, including unique-size files;
+- `--rehash --hash-complete` processes every regular file in the saved inventory.
+
+The same two flags are available on `resume` after discovery.
+
 See [the filesystem guide](docs/FILESYSTEM.md) for commands, tuning, recovery and correctness boundaries.
 
 ## Cross-scan duplicates
