@@ -131,7 +131,9 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     if (!scanId) return;
-    this.navigate('/scans/' + scanId + '/explore/' + entry.parentId + '/files/' + entry.entryId);
+    if (this.routeEntryId !== null)
+      this.navigate('/scans/' + scanId + '/explore/' + entry.parentId + '/files/' + entry.entryId);
+    else this.loadEntry(scanId, entry.entryId);
   }
   entryHref(entry: FileOccurrence): string {
     return '#/scans/' + entry.scanId + '/explore/' + entry.parentId + '/files/' + entry.entryId;

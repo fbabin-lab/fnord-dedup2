@@ -129,12 +129,13 @@ async function main() {
     assert.equal(await occurrencePanel.locator('tbody tr').count(), 100);
     await occurrencePanel.getByRole('button', { name: 'Next', exact: true }).click();
     await page.waitForFunction(() => document.querySelectorAll('#duplicate-occurrences tbody tr').length === 14);
+    const detailsContextRoute = page.url();
     await occurrencePanel.getByRole('button', { name: 'Details', exact: true }).last().click();
-    await page.waitForURL(/#\/scans\/2\/explore\/[0-9]+\/files\/[0-9]+$/);
-    const originalFileRoute = page.url();
+    const originalFileRoute = `${base}/#/scans/${reference.scanId}/explore/${reference.parentId}/files/${reference.entryId}`;
     const drawer = page.getByRole('dialog', { name: 'File details', exact: true });
     const fileOccurrences = drawer.getByRole('region', { name: 'Confirmed occurrences', exact: true });
     await page.waitForFunction(() => document.querySelectorAll('#file-occurrences li').length === 20);
+    assert.equal(page.url(), detailsContextRoute, 'opening details preserves duplicate filters and context');
     const initialPath = await fileOccurrences.locator('.occurrence-path').first().textContent();
     assert.match(await fileOccurrences.locator('.occurrence-path').first().getAttribute('href'), /^#\/scans\/1\/explore\/[0-9]+\/files\/[0-9]+$/);
     async function occurrencePage(direction) {
