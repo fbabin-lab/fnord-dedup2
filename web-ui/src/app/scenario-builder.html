@@ -27,7 +27,7 @@
 
     <details open class="scope-panel"><summary>{{ copy.scope }}</summary>
       <p class="hint">{{ copy.scopeHint }}</p>
-      <div class="saved-search-picker"><label>{{ copy.savedSearch }}<select name="savedSearch" [(ngModel)]="savedSearchId">
+      <div class="saved-search-picker"><label>{{ copy.savedSearch }}<select name="savedSearch" [attr.aria-label]="copy.savedSearch" [(ngModel)]="savedSearchId">
         <option value="">{{ copy.noSearch }}</option>@for (search of savedSearches(); track search.id) { <option [value]="search.id">{{ search.name }}</option> }
       </select></label><button type="button" class="secondary" (click)="useSavedSearch()" [disabled]="!savedSearchId">{{ copy.useSearch }}</button></div>
       <div class="scan-picker"><div>
