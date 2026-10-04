@@ -89,10 +89,14 @@ class InventoryService {
         read { Connection c, Map ignored ->
             Map scan = requiredScan(c, scanId)
             Map result = requiredEntry(c, scan, entryId)
-            if (result.sha256) {
+            result.scanId = scanId
+            result.scanName = scan.name
+            result.scanRoot = scan.root
+            if (result.kind == 'FILE' && result.sha256 && scan.algorithm == 'SHA-256') {
                 result.duplicateCount = scalar(c, '''SELECT count(*) FROM entries e
                     JOIN hashes h USING (scan_id,entry_id)
-                    WHERE e.kind='FILE' AND e.size=? AND h.sha256=?''',
+                    JOIN scans s USING (scan_id)
+                    WHERE e.kind='FILE' AND s.algorithm='SHA-256' AND e.size=? AND h.sha256=?''',
                     [Long.parseLong(result.size as String), result.sha256])
             } else result.duplicateCount = null
             result.relatedErrors = rows(c, '''SELECT phase,message,recorded_at_ms
@@ -103,6 +107,45 @@ class InventoryService {
                  recordedAtMs: r.getLong('recorded_at_ms')]
             }
             result
+        }
+    }
+
+    Map occurrences(long scanId, long entryId, String limitText, String cursorText) {
+        int limit = boundedInt(limitText, 'limit', 20, 500, 1)
+        read { Connection c, Map ignored ->
+            Map scan = requiredScan(c, scanId)
+            Map reference = requiredEntry(c, scan, entryId)
+            if (reference.kind != 'FILE') throw invalid('Occurrences are available only for a regular file.')
+            if (scan.algorithm != 'SHA-256')
+                throw new ApiFailure('UNSUPPORTED_ALGORITHM', HttpStatus.UNPROCESSABLE_ENTITY,
+                    'Confirmed occurrences require a SHA-256 scan.')
+            if (!reference.sha256)
+                throw new ApiFailure('HASH_UNAVAILABLE', HttpStatus.CONFLICT,
+                    'This file has no saved hash. Complete hashing with the CLI before finding confirmed occurrences.')
+            Map binding = [endpoint: 'entry-occurrences', referenceScanId: String.valueOf(scanId),
+                referenceEntryId: String.valueOf(entryId), size: reference.size, sha256: reference.sha256]
+            Map cursor = decodeOccurrenceCursor(cursorText, binding)
+            String sql = '''SELECT e.*,h.sha256,s.name AS scan_name,s.root AS scan_root
+                FROM entries e JOIN hashes h USING (scan_id,entry_id)
+                JOIN scans s USING (scan_id)
+                WHERE e.kind='FILE' AND s.algorithm='SHA-256' AND e.size=? AND h.sha256=?'''
+            List values = [Long.parseLong(reference.size as String), reference.sha256]
+            if (cursor) {
+                sql += ''' AND (e.scan_id>? OR (e.scan_id=? AND
+                    (e.relative_path>? OR (e.relative_path=? AND e.entry_id>?))))'''
+                values.addAll([cursor.scanId, cursor.scanId, cursor.relativePath,
+                    cursor.relativePath, cursor.entryId])
+            }
+            sql += ' ORDER BY e.scan_id,e.relative_path,e.entry_id LIMIT ?'
+            values.add(limit + 1)
+            List<Map> found = rows(c, sql, values) { ResultSet r ->
+                entryMap(r, r.getString('scan_root')) + [scanId: r.getLong('scan_id'),
+                    scanName: r.getString('scan_name'), scanRoot: r.getString('scan_root')]
+            }
+            boolean hasMore = found.size() > limit
+            if (hasMore) found.remove(found.size() - 1)
+            [items: found, page: [limit: limit, hasMore: hasMore,
+                nextCursor: hasMore ? encodeOccurrenceCursor(binding, found.last()) : null]]
         }
     }
 
@@ -259,6 +302,27 @@ class InventoryService {
         String json = JsonOutput.toJson([scanId: scanId, parentId: parentId,
             rank: last.kind == 'DIRECTORY' ? 0 : 1, name: last.filename, entryId: last.entryId])
         Base64.getUrlEncoder().withoutPadding().encodeToString(json.getBytes(StandardCharsets.UTF_8))
+    }
+
+    private static String encodeOccurrenceCursor(Map binding, Map last) {
+        String json = JsonOutput.toJson(binding + [scanId: String.valueOf(last.scanId),
+            relativePath: last.relativePath, entryId: String.valueOf(last.entryId)])
+        Base64.getUrlEncoder().withoutPadding().encodeToString(json.getBytes(StandardCharsets.UTF_8))
+    }
+
+    private static Map decodeOccurrenceCursor(String token, Map binding) {
+        if (!token) return null
+        if (token.length() > 65536) throw invalid('Invalid occurrence cursor.')
+        try {
+            Map value = new JsonSlurper().parseText(
+                new String(Base64.getUrlDecoder().decode(token), StandardCharsets.UTF_8)) as Map
+            if (binding.any { key, expected -> value[key] != expected } ||
+                !(value.scanId instanceof String) || !(value.entryId instanceof String) ||
+                !(value.relativePath instanceof String)) throw invalid('Invalid occurrence cursor.')
+            [scanId: positiveId(value.scanId as String), relativePath: value.relativePath,
+                entryId: positiveId(value.entryId as String)]
+        } catch (ApiFailure failure) { throw failure }
+        catch (Exception ignored) { throw invalid('Invalid occurrence cursor.') }
     }
 
     private static Map decodeCursor(String token, long scanId, long parentId) {

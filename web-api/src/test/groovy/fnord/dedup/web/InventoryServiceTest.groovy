@@ -9,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import java.sql.DriverManager
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -114,6 +115,98 @@ class InventoryServiceTest {
             assert blocked.code == 'DATABASE_LOCKED'
         }
         assert service.dashboard().scanErrors == 3
+    }
+
+    @Test void pagesConfirmedOccurrencesAcrossScansWithoutOpeningHistoricalPaths() {
+        List<Path> roots = (1..3).collect { Files.createDirectory(work.resolve('source-' + it)) }
+        roots.eachWithIndex { Path root, int index ->
+            Files.writeString(root.resolve('a.txt'), 'same!')
+            Files.writeString(root.resolve('b.txt'), 'same!')
+            if (index == 1) Files.writeString(root.resolve('odd.txt'), 'same!')
+        }
+        Files.writeString(roots[0].resolve('different-a.txt'), 'other')
+        Files.writeString(roots[0].resolve('different-b.txt'), 'other')
+        Files.writeString(roots[0].resolve('unhashed.txt'), 'unique-sized unresolved payload')
+        Files.write(roots[0].resolve('empty-a'), new byte[0])
+        Files.write(roots[0].resolve('empty-b'), new byte[0])
+        Path db = work.resolve('inventory.duckdb')
+        Dedup.open(db, new ScanOptions(databaseThreads: 1, memoryLimit: '128MB')).withCloseable { scanner ->
+            roots.eachWithIndex { Path root, int index -> scanner.scan('scan-' + (index + 1), root) }
+        }
+        String unusual = 'odd\\name\nλ".txt'
+        DriverManager.getConnection('jdbc:duckdb:' + db).withCloseable { c ->
+            c.createStatement().withCloseable { s ->
+                s.executeUpdate("UPDATE scans SET root='/offline/first' WHERE scan_id=1")
+                s.executeUpdate("UPDATE scans SET root='C:/offline/second' WHERE scan_id=2")
+                s.executeUpdate("UPDATE scans SET algorithm='OTHER' WHERE scan_id=3")
+            }
+            c.prepareStatement("UPDATE entries SET filename=?,relative_path=? WHERE scan_id=1 AND filename='b.txt'").withCloseable { s ->
+                s.setString(1, unusual); s.setString(2, unusual); s.executeUpdate()
+            }
+        }
+        byte[] before = MessageDigest.getInstance('SHA-256').digest(Files.readAllBytes(db))
+        InventoryService service = new InventoryService(new ScannerDatabase(db.toString()))
+        List<Map> children = service.children(1, 1, '500', null).items
+        long referenceId = children.find { it.filename == 'a.txt' }.entryId as long
+        Map reference = service.entry(1, referenceId)
+        assert reference.duplicateCount == 5
+        assert reference.scanId == 1 && reference.scanName == 'scan-1'
+        Map first = service.occurrences(1, referenceId, '2', null)
+        assert first.items.size() == 2 && first.page.hasMore
+        List<Map> found = []
+        String cursor = null
+        do {
+            Map page = service.occurrences(1, referenceId, '2', cursor)
+            assert page.items.size() <= 2
+            found.addAll(page.items)
+            cursor = page.page.nextCursor
+        } while (cursor)
+        assert found.size() == 5
+        assert found.collect { it.scanId + ':' + it.entryId }.unique().size() == 5
+        assert found*.scanId == [1L, 1L, 2L, 2L, 2L]
+        assert found.every { it.kind == 'FILE' && it.size == reference.size && it.sha256 == reference.sha256 }
+        assert found.any { it.scanId == 1 && it.entryId == referenceId }
+        assert found.findAll { it.scanId == 1 }.every { it.path.startsWith('/offline/first/') }
+        assert found.findAll { it.scanId == 2 }.every { it.path.startsWith('C:/offline/second/') }
+        Map unusualOccurrence = found.find { it.relativePath == unusual }
+        assert unusualOccurrence.path == '/offline/first/' + unusual
+        assert unusualOccurrence.scanName == 'scan-1' && unusualOccurrence.parentId == 1
+        assert service.occurrences(1, unusualOccurrence.entryId as long, null, null).items.size() == 5
+        long emptyId = children.find { it.filename == 'empty-a' }.entryId as long
+        assert service.occurrences(1, emptyId, null, null).items*.size == ['0', '0']
+
+        assert assertThrows(ApiFailure) {
+            service.occurrences(1, children.find { it.filename == 'unhashed.txt' }.entryId as long, null, null)
+        }.code == 'HASH_UNAVAILABLE'
+        assert assertThrows(ApiFailure) { service.occurrences(1, 1, null, null) }.code == 'INVALID_FILTER'
+        assert assertThrows(ApiFailure) { service.occurrences(999, referenceId, null, null) }.code == 'SCAN_NOT_FOUND'
+        assert assertThrows(ApiFailure) { service.occurrences(1, 999, null, null) }.code == 'ENTRY_NOT_FOUND'
+        assert assertThrows(ApiFailure) { service.occurrences(3, 2, null, null) }.code == 'UNSUPPORTED_ALGORITHM'
+        assert service.entry(3, 2).duplicateCount == null
+        ['0', '501', 'x'].each { limit ->
+            assert assertThrows(ApiFailure) { service.occurrences(1, referenceId, limit, null) }.code == 'INVALID_FILTER'
+        }
+        assertThrows(ApiFailure) { service.occurrences(1, emptyId, '2', first.page.nextCursor as String) }
+        assertThrows(ApiFailure) { service.occurrences(2, found.find { it.scanId == 2 }.entryId as long, '2', first.page.nextCursor as String) }
+        ['invalid!', 'W10', service.children(1, 1, '1', null).page.nextCursor].each { token ->
+            assert assertThrows(ApiFailure) { service.occurrences(1, referenceId, '2', token as String) }.code == 'INVALID_FILTER'
+        }
+        new DatabaseLock(Path.of(db.toString() + '.lock')).withCloseable {
+            assert assertThrows(ApiFailure) { service.occurrences(1, referenceId, null, null) }.code == 'DATABASE_LOCKED'
+        }
+        assert Arrays.equals(before, MessageDigest.getInstance('SHA-256').digest(Files.readAllBytes(db)))
+        assert Files.readString(roots[0].resolve('a.txt')) == 'same!'
+        // A CLI hash replacement invalidates the previous content cursor.
+        DriverManager.getConnection('jdbc:duckdb:' + db).withCloseable { c ->
+            c.prepareStatement('UPDATE hashes SET sha256=? WHERE scan_id=1 AND entry_id=?').withCloseable { s ->
+                s.setString(1, 'f' * 64); s.setLong(2, referenceId); s.executeUpdate()
+            }
+        }
+        assert assertThrows(ApiFailure) {
+            service.occurrences(1, referenceId, '2', first.page.nextCursor as String)
+        }.code == 'INVALID_FILTER'
+        assert service.entry(1, referenceId).duplicateCount == 1
+        assert service.occurrences(1, referenceId, null, null).items*.entryId == [referenceId]
     }
 
     @Test void simultaneousWebReadsQueueBehindOneSidecarLock() {

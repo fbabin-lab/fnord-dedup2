@@ -299,9 +299,39 @@
               <div><dt>{{ copy.hashState }}</dt><dd>{{ file.sha256 ? copy.hashed : copy.unknownHash }}</dd></div>
               <div><dt>{{ copy.sha256 }}</dt><dd class="hash-text">{{ file.sha256 || '—' }}</dd></div>
               <div><dt>{{ copy.databaseOccurrences }}</dt>
-                <dd>{{ file.duplicateCount === null ? copy.unknownHash : file.duplicateCount }}</dd></div>
+                <dd>{{ file.duplicateCount === null ? (file.sha256 ? copy.confirmationUnavailable : copy.unknownHash) : file.duplicateCount }}</dd></div>
             </dl>
-            @if (file.kind === 'FILE' && file.sha256) {
+            @if (file.kind === 'FILE' && file.sha256 && file.duplicateCount !== null) {
+              <section id="file-occurrences" role="region" [attr.aria-label]="copy.confirmedOccurrences" [attr.aria-busy]="occurrencesLoading()">
+                <h3>{{ copy.confirmedOccurrences }}</h3>
+                <p class="hint">{{ copy.occurrenceLinksHint }}</p>
+                @if (occurrencesLoading()) { <p class="message" role="status">{{ copy.loading }}</p> }
+                @if (occurrencesProblem(); as issue) {
+                  <p class="message error" role="alert">{{ issue.message }}</p>
+                  <button type="button" class="secondary" (click)="refreshOccurrences()">{{ copy.retry }}</button>
+                }
+                @if (fileOccurrences(); as result) {
+                  <ul class="occurrence-links">
+                    @for (occurrence of result.items; track occurrence.scanId + ':' + occurrence.entryId) {
+                      <li>
+                        <div class="occurrence-scan">
+                          <span>{{ occurrence.scanName }}</span>
+                          @if (occurrence.scanId === file.scanId && occurrence.entryId === file.entryId) {
+                            <span class="badge">{{ copy.currentFile }}</span>
+                          }
+                        </div>
+                        <a class="text-action path-text occurrence-path" [href]="entryHref(occurrence)">{{ occurrence.path }}</a>
+                        <a class="text-action occurrence-directory" [href]="directoryHref(occurrence)">{{ copy.containingDirectory }}</a>
+                      </li>
+                    }
+                  </ul>
+                  <div class="pagination">
+                    <button type="button" class="secondary" (click)="previousOccurrences()" [disabled]="occurrencesLoading() || !canPreviousOccurrences()">{{ copy.previous }}</button>
+                    <span>{{ result.items.length }} {{ copy.onPage }}</span>
+                    <button type="button" class="secondary" (click)="nextOccurrences()" [disabled]="occurrencesLoading() || !result.page.hasMore">{{ copy.next }}</button>
+                  </div>
+                }
+              </section>
               <button type="button" (click)="findDuplicates(file)">{{ copy.findDuplicates }}</button>
             }
             @if (file.relatedErrors?.length) {
