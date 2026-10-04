@@ -1,0 +1,66 @@
+CREATE TABLE scenarios (
+    id VARCHAR PRIMARY KEY,
+    scanner_path VARCHAR NOT NULL,
+    name VARCHAR NOT NULL,
+    description VARCHAR NOT NULL,
+    config_json VARCHAR NOT NULL,
+    revision BIGINT NOT NULL,
+    status VARCHAR NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    generation_id VARCHAR,
+    generated_revision BIGINT,
+    generated_at TIMESTAMP,
+    snapshot_json VARCHAR,
+    UNIQUE(scanner_path,name)
+);
+CREATE TABLE scenario_decisions (
+    scenario_id VARCHAR NOT NULL,
+    generation_id VARCHAR NOT NULL,
+    group_id VARCHAR NOT NULL,
+    scan_id BIGINT NOT NULL,
+    entry_id BIGINT NOT NULL,
+    parent_id BIGINT NOT NULL,
+    scan_name VARCHAR NOT NULL,
+    scan_root VARCHAR NOT NULL,
+    relative_path VARCHAR NOT NULL,
+    filename VARCHAR NOT NULL,
+    path VARCHAR NOT NULL,
+    path_key VARCHAR NOT NULL,
+    size BIGINT NOT NULL,
+    modified_sec BIGINT NOT NULL,
+    modified_nano INTEGER NOT NULL,
+    sha256 VARCHAR NOT NULL,
+    matches_filters BOOLEAN NOT NULL,
+    has_error BOOLEAN NOT NULL,
+    protected BOOLEAN NOT NULL,
+    conflicting BOOLEAN NOT NULL,
+    auto_decision VARCHAR NOT NULL,
+    auto_reason VARCHAR NOT NULL,
+    decision VARCHAR NOT NULL,
+    reason VARCHAR NOT NULL
+);
+CREATE TABLE scenario_groups (
+    scenario_id VARCHAR NOT NULL,
+    generation_id VARCHAR NOT NULL,
+    group_id VARCHAR NOT NULL,
+    size BIGINT NOT NULL,
+    sha256 VARCHAR NOT NULL,
+    sample_path VARCHAR NOT NULL,
+    occurrences BIGINT NOT NULL,
+    recorded_paths BIGINT NOT NULL,
+    keep_count BIGINT NOT NULL,
+    keeper_count BIGINT NOT NULL,
+    remove_count BIGINT NOT NULL,
+    undecided_count BIGINT NOT NULL,
+    unresolved_count BIGINT NOT NULL,
+    candidate_bytes HUGEINT NOT NULL
+);
+CREATE TABLE scenario_overrides (
+    scenario_id VARCHAR NOT NULL,
+    path_key VARCHAR NOT NULL,
+    group_id VARCHAR NOT NULL,
+    decision VARCHAR NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    PRIMARY KEY(scenario_id,path_key)
+);

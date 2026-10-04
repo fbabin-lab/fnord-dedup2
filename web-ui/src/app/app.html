@@ -16,6 +16,8 @@
         (click)="navigate('/search')">{{ copy.search }}</button>
       <button type="button" class="nav-item" [class.active]="view() === 'duplicates'"
         (click)="openDuplicates()">{{ copy.duplicates }}</button>
+      <button type="button" class="nav-item" [class.active]="view() === 'scenarios'"
+        (click)="openScenarios()">{{ copy.scenarios }}</button>
       <button type="button" class="nav-item" [class.active]="view() === 'errors'"
         (click)="openErrors()">{{ copy.errors }}</button>
       <p class="nav-caption future-caption">{{ copy.upcoming }}</p>
@@ -50,11 +52,13 @@
             <h1>{{ copy.search }}</h1><p class="lead">{{ copy.searchDescription }}</p>
           } @else if (view() === 'duplicates') {
             <h1>{{ copy.duplicates }}</h1><p class="lead">{{ copy.duplicatesDescription }}</p>
+          } @else if (view() === 'scenarios') {
+            <h1>{{ copy.scenarios }}</h1><p class="lead">{{ copy.scenariosDescription }}</p>
           } @else {
             <h1>{{ copy.errors }}</h1><p class="lead">{{ scan()?.name }} · {{ copy.errorsDescription }}</p>
           }
         </div>
-        @if (view() !== 'search' && view() !== 'duplicates') {
+        @if (view() !== 'search' && view() !== 'duplicates' && view() !== 'scenarios') {
           <button type="button" (click)="refresh()" [disabled]="loading()">{{ copy.retry }}</button>
         }
       </div>
@@ -166,6 +170,7 @@
             <button type="button" (click)="openExplorer(current.scanId)">{{ copy.exploreFiles }}</button>
             <button type="button" class="secondary" (click)="openSearch(current.scanId)">{{ copy.searchThisScan }}</button>
             <button type="button" class="secondary" (click)="openDuplicates(current.scanId)">{{ copy.duplicatesThisScan }}</button>
+            <button type="button" class="secondary" (click)="scenarioForScan(current.scanId)">{{ copy.scenarioThisScan }}</button>
             <button type="button" class="secondary" (click)="openErrors(current.scanId)">{{ copy.viewErrors }}</button>
           </div>
           <section class="metrics-grid">
@@ -209,7 +214,8 @@
             <section class="panel listing-panel">
               <div class="section-heading"><div><h2 class="path-text">{{ listing.directory.path }}</h2>
                 <p class="hint">{{ copy.directoryHint }}</p></div>
-                <button type="button" class="secondary" (click)="openSearch(scanId()!, directoryId())">{{ copy.searchThisDirectory }}</button></div>
+                <div class="actions-row"><button type="button" class="secondary" (click)="openSearch(scanId()!, directoryId())">{{ copy.searchThisDirectory }}</button>
+                  <button type="button" class="secondary" (click)="scenarioForScan(scanId()!, directoryId())">{{ copy.scenarioThisDirectory }}</button></div></div>
               <div class="table-wrap">
                 <table>
                   <thead><tr><th>{{ copy.name }}</th><th>{{ copy.type }}</th><th class="number">{{ copy.size }}</th>
@@ -239,13 +245,18 @@
       @if (view() === 'search') {
         <app-file-search [initialScanId]="scanId()" [initialDirectoryId]="searchDirectoryId()"
           (entryOpen)="openEntry($event)" (directoryOpen)="openSearchDirectory($event)"
-          (scanOpen)="openScan($event)" />
+          (scanOpen)="openScan($event)" (scenarioOpen)="createScenario($event)" />
       }
 
       @if (view() === 'duplicates') {
         <app-duplicate-explorer [initialScanId]="scanId()" [initialEntryId]="duplicateEntryId()"
           (entryOpen)="openEntry($event)" (directoryOpen)="openSearchDirectory($event)"
-          (scanOpen)="openScan($event)" (clearReference)="openDuplicates($event)" />
+          (scanOpen)="openScan($event)" (clearReference)="openDuplicates($event)" (scenarioOpen)="createScenario($event)" />
+      }
+
+      @if (view() === 'scenarios') {
+        <app-scenario-builder [initialId]="scenarioId()" [seed]="scenarioSeed()"
+          (scenarioOpen)="openScenario($event)" (entryOpen)="openEntry($event)" (directoryOpen)="openSearchDirectory($event)" />
       }
 
       @if (view() === 'errors') {

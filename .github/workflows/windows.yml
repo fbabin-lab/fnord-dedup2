@@ -41,6 +41,8 @@ jobs:
           path: |
             build/reports/tests/
             build/test-results/
+            web-api/build/reports/tests/
+            web-api/build/test-results/
             build/windows-smoke/*.log
             build/windows-smoke/summary.txt
           if-no-files-found: ignore

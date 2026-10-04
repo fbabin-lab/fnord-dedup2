@@ -16,7 +16,7 @@ import java.sql.SQLException
 @Service
 class DuplicateService {
     private static final Set<String> CONTENT_FIELDS = [
-        'limit', 'cursor', 'scanIds', 'name', 'path', 'extensions', 'size', 'modified', 'errorState'
+        'limit', 'cursor', 'scanIds', 'directory', 'name', 'path', 'extensions', 'size', 'modified', 'errorState'
     ] as Set<String>
     private static final Set<String> FIELDS = (CONTENT_FIELDS + [
         'mode', 'minOccurrences', 'minScans', 'entry', 'sort'
@@ -33,9 +33,9 @@ class DuplicateService {
     Map groups(Map request) {
         Map spec = normalize(request)
         Map cursor = decodeCursor(spec, 'groups')
-        database.withConnection { Connection connection, ignored ->
-            Map anchor = validateScope(connection, spec)
-            Map query = groupQuery(spec, anchor)
+        withSelection(spec) { Connection connection, Map context ->
+            Map anchor = context.reference
+            Map query = context.query
             String key = SORTS[spec.sort.field]
             String direction = spec.sort.direction
             String comparison = direction == 'ASC' ? '>' : '<'
@@ -73,9 +73,8 @@ class DuplicateService {
         Map identity = parseGroupId(groupId)
         Map spec = normalize(request)
         Map cursor = decodeCursor(spec, 'occurrences', groupId)
-        database.withConnection { Connection connection, ignored ->
-            Map anchor = validateScope(connection, spec)
-            Map query = groupQuery(spec, anchor)
+        withSelection(spec) { Connection connection, Map context ->
+            Map query = context.query
             List groupValues = new ArrayList(query.values as List)
             groupValues.addAll([identity.size, identity.sha256])
             List<Map> matches = rows(connection, query.sql +
@@ -106,11 +105,16 @@ class DuplicateService {
         } as Map
     }
 
-    private static Map normalize(Map request) {
+    /** Shared explicit scope contract for duplicate previews and saved scenarios. */
+    static Map normalize(Map request) {
         Map source = request ?: [:]
         if (!FIELDS.containsAll(source.keySet())) throw invalid('Unknown field in duplicate request.')
-        Map content = FileSearchService.normalize(source.subMap(CONTENT_FIELDS))
+        Map content = FileSearchService.normalize(source.subMap(CONTENT_FIELDS - ['directory']))
         if (!content.scanIds) throw invalid('Select at least one scan explicitly.')
+        content.directory = source.directory == null ? null :
+            FileSearchService.normalize([directory: source.directory]).directory
+        if (content.directory && !content.scanIds.contains(content.directory.scanId))
+            throw invalid('The target directory must belong to a selected scan.')
         String mode = source.mode == null ? 'ANY' : source.mode
         if (!(mode in ['ANY', 'ACROSS_SCANS'])) throw invalid('Invalid duplicate mode.')
         if (mode == 'ACROSS_SCANS' && content.scanIds.size() < 2)
@@ -136,6 +140,26 @@ class DuplicateService {
         if (!SORTS.containsKey(field) || !(direction in ['ASC', 'DESC'])) throw invalid('Invalid sort.')
         content.subMap(CONTENT_FIELDS) + [mode: mode, minOccurrences: minOccurrences,
             minScans: minScans, entry: entry, sort: [field: field, direction: direction]]
+    }
+
+    /** A single read-only, locked source snapshot. Collections are streamed by callers. */
+    def withSelection(Map spec, Closure action) {
+        database.withConnection { Connection connection, ignored ->
+            Map anchor = validateScope(connection, spec)
+            Map directory = null
+            if (spec.directory) {
+                List<Map> found = rows(connection, '''SELECT relative_path,kind FROM entries
+                    WHERE scan_id=? AND entry_id=? LIMIT 1''',
+                    [spec.directory.scanId, spec.directory.entryId]) {
+                    ResultSet result -> [path: result.getString(1), kind: result.getString(2)]
+                }
+                if (!found) throw new ApiFailure('ENTRY_NOT_FOUND', HttpStatus.NOT_FOUND,
+                    'The target directory was not found.')
+                if (found[0].kind != 'DIRECTORY') throw invalid('The target entry must be a directory.')
+                directory = found[0]
+            }
+            action.call(connection, [reference: anchor, query: groupQuery(spec, anchor, directory)])
+        }
     }
 
     private static Map validateScope(Connection connection, Map spec) {
@@ -175,10 +199,21 @@ class DuplicateService {
         found[0] + spec.entry
     }
 
-    private static Map groupQuery(Map spec, Map anchor) {
+    private static Map groupQuery(Map spec, Map anchor, Map directory) {
         List<String> predicates = []
         List values = []
         FileSearchService.addContentFilters(predicates, values, spec)
+        if (directory) {
+            predicates.add('e.scan_id=?')
+            values.add(spec.directory.scanId)
+            if (spec.directory.recursive) {
+                predicates.add('starts_with(e.relative_path,?)')
+                values.add(directory.path ? directory.path + '/' : '')
+            } else {
+                predicates.add('e.parent_id=?')
+                values.add(spec.directory.entryId)
+            }
+        }
         if (spec.errorState == 'HAS') predicates.add(ERROR_SQL)
         else if (spec.errorState == 'NONE') predicates.add('NOT ' + ERROR_SQL)
         String predicate = predicates ? predicates.join(' AND ') : 'true'
@@ -205,7 +240,7 @@ class DuplicateService {
         [sql: sql, values: values]
     }
 
-    private static Map coverage(Connection connection, Map spec) {
+    static Map coverage(Connection connection, Map spec) {
         String placeholders = (['?'] * spec.scanIds.size()).join(',')
         Map counts = rows(connection, '''SELECT count(*) AS files,
             count(h.sha256) AS hashed_files, count(*) FILTER (WHERE h.sha256 IS NULL) AS unhashed_files
@@ -312,9 +347,10 @@ class DuplicateService {
     private static List rows(Connection connection, String sql, List values, Closure mapper) {
         List output = []
         connection.prepareStatement(sql).withCloseable { statement ->
+            ScenarioSql.timeout(statement)
             values.eachWithIndex { Object value, int index -> statement.setObject(index + 1, value) }
             statement.executeQuery().withCloseable { ResultSet result ->
-                while (result.next()) output.add(mapper.call(result))
+                while (result.next()) { ScenarioSql.checkBudget(); output.add(mapper.call(result)) }
             }
         }
         output

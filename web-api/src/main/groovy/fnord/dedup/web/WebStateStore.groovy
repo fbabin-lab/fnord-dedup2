@@ -21,7 +21,10 @@ import java.util.concurrent.locks.ReentrantLock
 /** Web-owned state. This database is always distinct from the read-only scanner database. */
 @Service
 class WebStateStore implements AutoCloseable {
-    private static final Set<String> TABLES = ['web_schema_info', 'saved_searches'] as Set<String>
+    private static final Set<String> LEGACY_TABLES = ['web_schema_info', 'saved_searches'] as Set<String>
+    private static final Set<String> TABLES = (LEGACY_TABLES + [
+        'scenarios', 'scenario_groups', 'scenario_decisions', 'scenario_overrides'
+    ]) as Set<String>
     private final String configuredPath
     private final ScannerDatabase scanner
     private final ReentrantLock access = new ReentrantLock(true)
@@ -98,7 +101,8 @@ class WebStateStore implements AutoCloseable {
         }
     }
 
-    private def withState(Closure action) {
+    /** Serialize every web-state owner; application services alone supply the closure. */
+    def withState(Closure action) {
         access.lock()
         try {
             Connection current = openIfNeeded()
@@ -106,8 +110,25 @@ class WebStateStore implements AutoCloseable {
         } catch (ApiFailure failure) { throw failure }
         catch (SQLException error) {
             throw new ApiFailure('STATE_DATABASE_FAILED', HttpStatus.SERVICE_UNAVAILABLE,
-                'The saved-search database request could not be completed.', error)
+                'The web-state database request could not be completed.', error)
         } finally { access.unlock() }
+    }
+
+    /** Appenders must join this activated native transaction; publication is atomic. */
+    def transaction(Closure action) {
+        withState { Connection current ->
+            if (!current.autoCommit) throw new IllegalStateException('Nested web-state transaction')
+            current.autoCommit = false
+            try {
+                current.createStatement().withCloseable { it.execute('SELECT 1') }
+                def result = action.call(current)
+                current.commit()
+                result
+            } catch (Throwable error) {
+                try { current.rollback() } catch (Throwable rollback) { error.addSuppressed(rollback) }
+                throw error
+            } finally { current.autoCommit = true }
+        }
     }
 
     private Connection openIfNeeded() {
@@ -125,9 +146,10 @@ class WebStateStore implements AutoCloseable {
                 lock = new DatabaseLock(Path.of(path.toString() + '.lock'))
             } catch (IllegalStateException inUse) {
                 throw new ApiFailure('STATE_DATABASE_LOCKED', HttpStatus.LOCKED,
-                    'The saved-search database is already in use by another web process.', inUse)
+                    'The web-state database is already in use by another web process.', inUse)
             }
             opened = DriverManager.getConnection('jdbc:duckdb:' + path)
+            scanner.configureSession(opened)
             initialize(opened)
             processLock = lock
             connection = opened
@@ -138,7 +160,7 @@ class WebStateStore implements AutoCloseable {
         } catch (IOException | SQLException error) {
             try { opened?.close() } finally { lock?.close() }
             throw new ApiFailure('STATE_DATABASE_OPEN_FAILED', HttpStatus.SERVICE_UNAVAILABLE,
-                'The saved-search database could not be opened.', error)
+                'The web-state database could not be opened.', error)
         } catch (RuntimeException error) {
             try { opened?.close() } finally { lock?.close() }
             throw error
@@ -160,7 +182,7 @@ class WebStateStore implements AutoCloseable {
             catch (IOException ignored) { }
         }
         if (same) throw new ApiFailure('INVALID_STATE_DATABASE', HttpStatus.BAD_REQUEST,
-            'The saved-search database must be different from the scanner database.')
+            'The web-state database must be different from the scanner database.')
     }
 
     private static void initialize(Connection current) {
@@ -194,13 +216,27 @@ class WebStateStore implements AutoCloseable {
                 try { current.rollback() } catch (Throwable rollback) { error.addSuppressed(rollback) }
                 throw error
             } finally { current.autoCommit = autoCommit }
-            tables = TABLES
+            tables = LEGACY_TABLES
         }
-        if (tables != TABLES) throw unsupported()
         List<Integer> versions = rows(current, 'SELECT version FROM web_schema_info', []) {
             ResultSet result -> result.getInt(1)
         } as List<Integer>
-        if (versions != [1]) throw unsupported()
+        if (versions == [1] && tables == LEGACY_TABLES) {
+            current.autoCommit = false
+            try {
+                String migration = WebStateStore.getResourceAsStream('/web-state-v2.sql').withCloseable {
+                    it.getText('UTF-8')
+                }
+                current.createStatement().withCloseable { statement ->
+                    migration.split(';').findAll { it.trim() }.each { statement.execute(it) }
+                    statement.execute('UPDATE web_schema_info SET version=2')
+                }
+                current.commit()
+            } catch (Throwable error) {
+                try { current.rollback() } catch (Throwable rollback) { error.addSuppressed(rollback) }
+                throw error
+            } finally { current.autoCommit = true }
+        } else if (versions != [2] || tables != TABLES) throw unsupported()
     }
 
     private static Map normalizeBody(Map body) {
@@ -264,7 +300,7 @@ class WebStateStore implements AutoCloseable {
     }
     private static ApiFailure unsupported() {
         new ApiFailure('UNSUPPORTED_STATE_SCHEMA', HttpStatus.UNPROCESSABLE_ENTITY,
-            'The saved-search database schema is not supported.')
+            'The web-state database schema is not supported.')
     }
 
     private static List rows(Connection current, String sql, List values, Closure mapper) {

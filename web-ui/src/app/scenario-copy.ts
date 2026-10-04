@@ -1,0 +1,38 @@
+export const scenarioCopy = {
+  planning: 'Scenarios are saved plans. They never modify files or the scanner database.',
+  historical: 'Recorded paths can represent overlapping or historical inventories. Candidate bytes do not estimate reclaimable space. Any future cleanup must revalidate live files and retained copies.',
+  newScenario: 'New scenario', saveScenario: 'Save scenario', saveChanges: 'Save changes', deleteScenario: 'Delete scenario',
+  chooseScan: 'Choose a scan', ruleType: 'Retention rule', exactSize: 'Exact size', unhashedFiles: 'Unhashed files',
+  pathStartsWith: 'Path starts with',
+  savedScenarios: 'Saved scenarios', noScenarios: 'No scenarios saved for this database.',
+  definition: 'Scenario definition', scenarioName: 'Scenario name', description: 'Description', scope: 'Target scope',
+  scopeHint: 'Only matching paths may become removal candidates. Complete content groups retain all selected occurrences.',
+  savedSearch: 'Start from a saved search', useSearch: 'Use saved search', noSearch: 'Choose a saved search',
+  clearDirectory: 'Clear directory scope', clearReference: 'Clear reference file',
+  rules: 'Retention rules', ruleHint: 'Protections and paths outside the target scope stay first. Rules apply in order; ties use recorded path and observation IDs.',
+  addRule: 'Add rule', moveUp: 'Move up', moveDown: 'Move down', removeRule: 'Remove rule',
+  preferredScan: 'Preferred scan', preferredPath: 'Preferred relative path', allSelected: 'All selected scans',
+  manual: 'Choose every decision manually', protections: 'Protected paths', addProtection: 'Add protected path',
+  protectionHint: 'A path protects itself and its descendants. Leave it empty to protect an entire selected scan.',
+  protectedScan: 'Protected scan', protectedPath: 'Protected relative path', removeProtection: 'Remove protected path',
+  limits: 'Generation limits', maxOccurrences: 'Maximum observations', maxSeconds: 'Maximum generation time (seconds)',
+  generate: 'Generate decisions', validate: 'Validate snapshot', resetOverrides: 'Reset manual choices',
+  unsaved: 'Save these changes before generating or editing decisions.',
+  stale: 'Inputs or manual choices changed. Generate again to publish an updated decision snapshot.',
+  ready: 'Planning validation passed. Live files have not been revalidated.',
+  notGenerated: 'Save the scenario, then generate a decision snapshot explicitly.',
+  snapshot: 'Decision snapshot', recordedPaths: 'Recorded paths', retained: 'Keep', removals: 'Removal candidates',
+  candidateBytes: 'Planned candidate bytes', undecided: 'Undecided', unresolved: 'Unresolved',
+  review: 'Review decisions', decisions: 'Group decisions', choice: 'Manual choice', generatedChoice: 'Generated decision',
+  automatic: 'Automatic', manualHint: 'Choices apply to every alias of the recorded path. Save choices here, then regenerate. Protected and unresolved paths cannot be removed.',
+  ruleOptions: [
+    { value: 'PREFER_SCAN', label: 'Prefer a scan' }, { value: 'PREFER_PATH', label: 'Prefer a path' },
+    { value: 'NEWEST', label: 'Newest modification time' }, { value: 'OLDEST', label: 'Oldest modification time' },
+    { value: 'SHALLOWEST', label: 'Shallowest relative path' }
+  ],
+  reasons: {
+    PROTECTED: 'Protected path', OUTSIDE_SCOPE: 'Outside target scope', CONFLICTING_HISTORY: 'Conflicting historical observations',
+    RECORDED_ERROR: 'Recorded error', NO_CONFIRMED_KEEPER: 'No confirmed keeper', MANUAL_REQUIRED: 'Manual decision required',
+    RULE_KEEPER: 'Selected keeper', RULE_REDUNDANT: 'Another candidate is retained', MANUAL: 'Manual choice'
+  } as Record<string, string>
+};
