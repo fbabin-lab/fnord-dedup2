@@ -174,9 +174,13 @@ export async function checkScenarioBrowser(page, base, output) {
   await click(page.getByRole('button', { name: 'Generate decisions', exact: true }), '/api/v1/scenarios/' + directory.id + '/generate');
   await ready('READY', 1);
   await page.getByRole('button', { name: 'New scenario', exact: true }).click();
+  await page.waitForURL(/#\/scenarios\/new$/);
+  await page.waitForFunction(() => !document.querySelector('.definition-panel .badge'));
   await page.getByLabel('Selected scans', { exact: true }).selectOption(['2']);
+  await page.waitForFunction(() => document.querySelector('.selected-scans')?.textContent?.includes('scan-2'));
   await page.getByLabel('Start from a saved search', { exact: true }).selectOption({ label: 'HTTP shared search' });
   await page.getByRole('button', { name: 'Use saved search', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.selected-scans')?.textContent?.includes('scan-2'));
   await page.getByLabel('Scenario name', { exact: true }).fill('Browser saved search scenario');
   const seeded = await click(page.getByRole('button', { name: 'Save scenario', exact: true }), '/api/v1/scenarios', 201);
   assert.deepEqual(seeded.config.request.scanIds, [2]);
