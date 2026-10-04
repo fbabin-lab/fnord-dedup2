@@ -108,6 +108,15 @@ tr:hover td { background: #fbfdfc; }
 .detail-drawer h3.file-name { text-transform: none; letter-spacing: 0; font-size: 19px;
   color: #26414b; margin: 23px 0 10px; }
 .hash-text { font-family: ui-monospace, monospace; word-break: break-all; }
+.occurrence-links { list-style: none; margin: 0; padding: 0; }
+.occurrence-links li { padding: 12px 0; border-bottom: 1px solid #e8eef0; }
+.occurrence-scan { display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  font-size: 11px; color: #637a83; overflow-wrap: anywhere; }
+.occurrence-path { display: block; margin: 7px 0; font-size: 12px; line-height: 1.5;
+  text-decoration: underline; }
+.occurrence-directory { font-size: 11px; }
+.occurrence-links a:focus-visible { outline: 3px solid #65cbb5; outline-offset: 3px; }
+#file-occurrences .pagination { justify-content: space-between; padding: 13px 0; }
 .related-error { padding: 9px; background: #fff4f0; border-radius: 6px; font-size: 12px; }
 @media (max-width: 950px) { .explorer-layout { grid-template-columns: 1fr; } .tree-panel { max-height: 230px; } }
 @media (max-width: 720px) {

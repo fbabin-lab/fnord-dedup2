@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import {
   Breadcrumb, ChildPage, Dashboard, DatabaseStatus, DuplicateOccurrencePage,
   DuplicatePage, DuplicateRequest, Entry, FileSearchPage,
-  FileSearchRequest, Page, Registration, SavedSearch, SavedSearchList, Scan,
+  FileOccurrence, FileSearchRequest, Page, Registration, SavedSearch, SavedSearchList, Scan,
   ScanError, ScanFilters, Scenario, ScenarioConfig, ScenarioListItem, ScenarioGroup,
   ScenarioDecision, ScenarioPage
 } from './inventory.models';
@@ -26,6 +26,12 @@ export class InventoryApi {
   scan(scanId: number) { return this.http.get<Scan>('/api/v1/scans/' + scanId); }
   entry(scanId: number, entryId: number) {
     return this.http.get<Entry>('/api/v1/scans/' + scanId + '/entries/' + entryId);
+  }
+  entryOccurrences(scanId: number, entryId: number, cursor: string | null, limit = 20) {
+    let params = new HttpParams().set('limit', limit);
+    if (cursor) params = params.set('cursor', cursor);
+    return this.http.get<Page<FileOccurrence>>(
+      '/api/v1/scans/' + scanId + '/entries/' + entryId + '/occurrences', { params });
   }
   children(scanId: number, entryId: number, cursor: string | null, limit = 100) {
     let params = new HttpParams().set('limit', limit);

@@ -1,5 +1,6 @@
 export interface PageInfo { limit: number; nextCursor: string | null; hasMore: boolean; }
 export interface Page<T> { items: T[]; page: PageInfo; }
+export interface FileOccurrence extends Entry { scanId: number; scanName: string; scanRoot: string; }
 export interface Registration { path: string | null; configured: boolean; readOnly: boolean; }
 export interface DatabaseStatus {
   path: string;

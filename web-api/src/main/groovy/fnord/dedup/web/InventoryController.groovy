@@ -48,6 +48,14 @@ class InventoryController {
                            limit, cursor)
     }
 
+    @GetMapping('/scans/{scanId}/entries/{entryId}/occurrences')
+    Map occurrences(@PathVariable('scanId') String scanId, @PathVariable('entryId') String entryId,
+                    @RequestParam(value='limit', required=false) String limit,
+                    @RequestParam(value='cursor', required=false) String cursor) {
+        inventory.occurrences(InventoryService.positiveId(scanId), InventoryService.positiveId(entryId),
+                              limit, cursor)
+    }
+
     @GetMapping('/scans/{scanId}/entries/{entryId}/breadcrumbs')
     List<Map> breadcrumbs(@PathVariable('scanId') String scanId, @PathVariable('entryId') String entryId) {
         inventory.breadcrumbs(InventoryService.positiveId(scanId), InventoryService.positiveId(entryId))

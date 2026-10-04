@@ -8,7 +8,7 @@ import { DuplicateExplorerComponent } from './duplicate-explorer';
 import { ScenarioBuilderComponent } from './scenario-builder';
 import { InventoryApi } from './inventory.api';
 import {
-  ApiError, Breadcrumb, ChildPage, Dashboard, DatabaseStatus, DuplicateRequest, Entry, Page,
+  ApiError, Breadcrumb, ChildPage, Dashboard, DatabaseStatus, DuplicateRequest, Entry, FileOccurrence, Page,
   Registration, Scan, ScanError, ScanFilters
 } from './inventory.models';
 
@@ -26,6 +26,10 @@ export class AppComponent implements OnInit, OnDestroy {
   private pageRequests = new Subscription();
   private statusRequest?: Subscription;
   private detailRequest?: Subscription;
+  private occurrenceRequest?: Subscription;
+  private occurrenceCursor: string | null = null;
+  private occurrenceHistory: (string | null)[] = [];
+  private routeEntryId: number | null = null;
   private routeKey = '';
   private readonly onHashChange = () => this.syncRoute();
   private scanCursor: string | null = null;
@@ -52,6 +56,9 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly breadcrumbs = signal<Breadcrumb[]>([]);
   readonly errors = signal<Page<ScanError> | null>(null);
   readonly selectedEntry = signal<Entry | null>(null);
+  readonly fileOccurrences = signal<Page<FileOccurrence> | null>(null);
+  readonly occurrencesLoading = signal(false);
+  readonly occurrencesProblem = signal<ApiError | null>(null);
   readonly loading = signal(false);
   readonly detailLoading = signal(false);
   readonly problem = signal<ApiError | null>(null);
@@ -73,6 +80,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.pageRequests.unsubscribe();
     this.statusRequest?.unsubscribe();
     this.detailRequest?.unsubscribe();
+    this.occurrenceRequest?.unsubscribe();
   }
 
   navigate(path: string): void { window.location.hash = '#' + path; this.syncRoute(); }
@@ -123,20 +131,66 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     if (!scanId) return;
-    this.detailRequest?.unsubscribe();
-    this.selectedEntry.set(null);
-    this.detailProblem.set(null);
+    this.navigate('/scans/' + scanId + '/explore/' + entry.parentId + '/files/' + entry.entryId);
+  }
+  entryHref(entry: FileOccurrence): string {
+    return '#/scans/' + entry.scanId + '/explore/' + entry.parentId + '/files/' + entry.entryId;
+  }
+  directoryHref(entry: FileOccurrence): string {
+    return '#/scans/' + entry.scanId + '/explore/' + entry.parentId;
+  }
+  private loadEntry(scanId: number, entryId: number): void {
+    this.resetDetails();
     this.detailLoading.set(true);
-    this.detailRequest = this.api.entry(scanId, entry.entryId).subscribe({
-      next: value => { this.selectedEntry.set({ ...value, scanId, scanName: entry.scanName }); this.detailLoading.set(false); },
+    this.detailRequest = this.api.entry(scanId, entryId).subscribe({
+      next: value => {
+        this.selectedEntry.set(value); this.detailLoading.set(false);
+        if (value.kind === 'FILE' && value.sha256 && value.duplicateCount !== null) this.loadOccurrences();
+      },
       error: failure => { this.detailProblem.set(this.apiError(failure)); this.detailLoading.set(false); }
     });
   }
   closeEntry(): void {
+    this.resetDetails();
+    if (this.routeEntryId !== null) this.navigate('/scans/' + this.scanId() + '/explore/' + this.directoryId());
+  }
+  private resetDetails(): void {
     this.detailRequest?.unsubscribe();
+    this.occurrenceRequest?.unsubscribe();
     this.selectedEntry.set(null);
     this.detailProblem.set(null);
     this.detailLoading.set(false);
+    this.fileOccurrences.set(null);
+    this.occurrencesProblem.set(null);
+    this.occurrencesLoading.set(false);
+    this.occurrenceCursor = null; this.occurrenceHistory = [];
+  }
+  nextOccurrences(): void {
+    const next = this.fileOccurrences()?.page.nextCursor;
+    if (!next || this.occurrencesLoading()) return;
+    this.occurrenceHistory.push(this.occurrenceCursor); this.occurrenceCursor = next;
+    this.loadOccurrences();
+  }
+  previousOccurrences(): void {
+    if (!this.occurrenceHistory.length || this.occurrencesLoading()) return;
+    this.occurrenceCursor = this.occurrenceHistory.pop() ?? null;
+    this.loadOccurrences();
+  }
+  canPreviousOccurrences(): boolean { return this.occurrenceHistory.length > 0; }
+  refreshOccurrences(): void {
+    this.occurrenceCursor = null; this.occurrenceHistory = [];
+    this.loadOccurrences();
+  }
+  private loadOccurrences(): void {
+    const file = this.selectedEntry();
+    if (!file?.scanId) return;
+    this.occurrenceRequest?.unsubscribe();
+    this.fileOccurrences.set(null); this.occurrencesProblem.set(null);
+    this.occurrencesLoading.set(true);
+    this.occurrenceRequest = this.api.entryOccurrences(file.scanId, file.entryId, this.occurrenceCursor).subscribe({
+      next: page => { this.fileOccurrences.set(page); this.occurrencesLoading.set(false); },
+      error: failure => { this.occurrencesProblem.set(this.apiError(failure)); this.occurrencesLoading.set(false); }
+    });
   }
 
   refresh(): void { this.refreshStatus(); this.loadCurrent(); }
@@ -209,6 +263,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.routeKey = path;
     const parts = path.split('/').filter(Boolean);
     const id = Number(parts[1]), entryId = Number(parts[3]), searchEntryId = Number(parts[2]);
+    this.routeEntryId = null;
     this.searchDirectoryId.set(null);
     this.duplicateEntryId.set(null);
     this.scenarioId.set(null);
@@ -237,8 +292,10 @@ export class AppComponent implements OnInit, OnDestroy {
       this.view.set('scan'); this.scanId.set(id);
     } else if (parts[0] === 'scans' && Number.isSafeInteger(id) && id > 0 &&
                parts[2] === 'explore' && Number.isSafeInteger(entryId) && entryId > 0 &&
-               parts.length === 4) {
+               (parts.length === 4 || (parts.length === 6 && parts[4] === 'files' &&
+                Number.isSafeInteger(Number(parts[5])) && Number(parts[5]) > 0))) {
       this.view.set('explorer'); this.scanId.set(id); this.directoryId.set(entryId);
+      this.routeEntryId = parts.length === 6 ? Number(parts[5]) : null;
     } else if (parts[0] === 'scans' && Number.isSafeInteger(id) && id > 0 &&
                parts[2] === 'errors' && parts.length === 3) {
       this.view.set('errors'); this.scanId.set(id);
@@ -248,7 +305,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.scanHistory = []; this.scanCursor = null;
     this.directoryHistory = []; this.directoryCursor = null;
     this.errorHistory = []; this.errorCursor = null;
-    this.closeEntry();
+    this.resetDetails();
     this.loadCurrent();
   }
   private loadCurrent(): void {
@@ -276,6 +333,7 @@ export class AppComponent implements OnInit, OnDestroy {
           this.children.set(result.children);
           this.breadcrumbs.set(result.breadcrumbs);
         });
+        if (this.routeEntryId !== null) this.loadEntry(id, this.routeEntryId);
       }
       if (this.view() === 'errors') {
         this.watch(forkJoin({ scan: this.api.scan(id), errors: this.api.errors(id, null) }),
