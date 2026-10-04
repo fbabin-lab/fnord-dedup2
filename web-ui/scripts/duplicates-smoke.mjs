@@ -171,11 +171,13 @@ async function main() {
     const directoryHref = await fileOccurrences.locator('.occurrence-directory').first().getAttribute('href');
     await fileOccurrences.locator('.occurrence-directory').first().click();
     await page.waitForURL(base + '/' + directoryHref);
+    await drawer.waitFor({ state: 'hidden' });
     assert.equal(await drawer.count(), 0);
     await page.goto(originalFileRoute);
     await page.waitForFunction(() => document.querySelectorAll('#file-occurrences li').length === 20);
     await drawer.getByRole('button', { name: 'Close', exact: true }).click();
     await page.waitForURL(/#\/scans\/2\/explore\/[0-9]+$/);
+    await drawer.waitFor({ state: 'hidden' });
     assert.equal(await drawer.count(), 0);
     await page.goto(originalFileRoute);
     await page.waitForFunction(() => document.querySelectorAll('#file-occurrences li').length === 20);
