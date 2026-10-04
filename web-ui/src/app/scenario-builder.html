@@ -141,6 +141,19 @@
         <div class="panel metric"><span>{{ copy.undecided }} / {{ copy.unresolved }}</span><strong>{{ snapshot.summary.undecided }} / {{ snapshot.summary.unresolved }}</strong></div>
         <div class="panel metric"><span>{{ copy.candidateBytes }}</span><strong>{{ formatBytes(snapshot.summary.candidateBytes) }}</strong></div>
       </div>
+      <section class="panel export-panel" [attr.aria-label]="copy.exportTitle">
+        <h3>{{ copy.exportTitle }}</h3><p class="hint">{{ copy.exportHint }}</p>
+        <div class="export-controls"><label>{{ copy.exportFormat }}<select [attr.aria-label]="copy.exportFormat" [(ngModel)]="exportFormat" [disabled]="busy()">
+          <option value="JSONL">JSONL</option><option value="JSON">JSON</option><option value="CSV">CSV</option>
+        </select></label><button type="button" (click)="exportManifest()" [disabled]="!canExport()">{{ copy.exportManifest }}</button></div>
+        <p class="hint">{{ copy.exportLimit }}</p>
+        @if (exportFormat === 'CSV') { <p class="hint">{{ copy.csvHint }}</p> }
+        @if (downloadNotice()) { <p class="coverage" role="status">{{ downloadNotice() }}</p> }
+        @if (snapshot.lastExport; as last) {
+          <p class="hint">{{ copy.lastExport }}: {{ last.format }} · r{{ last.revision }} · {{ last.exportedAt }} · {{ formatBytes(last.bytes) }} · {{ last.recordCount }} {{ copy.recordedPaths }}</p>
+          <details><summary>{{ copy.exportChecksum }}</summary><code class="path-text">{{ last.sha256 }}</code></details>
+        }
+      </section>
       <section class="panel results-panel scenario-groups" [attr.aria-label]="copy.duplicateGroups">
         <div class="table-wrap"><table><thead><tr><th>{{ copy.samplePath }}</th><th class="number">{{ copy.size }}</th>
           <th class="number">{{ copy.duplicateOccurrences }}</th><th class="number">{{ copy.recordedPaths }}</th>

@@ -2,6 +2,8 @@ package fnord.dedup.web
 
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.*
+import jakarta.servlet.http.HttpServletResponse
+import java.nio.file.Files
 
 @RestController
 @RequestMapping('/api/v1/scenarios')
@@ -26,6 +28,21 @@ class ScenarioController {
     Map generate(@PathVariable('id') String id, @RequestBody Map body) { scenarios.generate(id, body) }
     @PostMapping('/{id}/validate')
     Map validate(@PathVariable('id') String id, @RequestBody Map body) { scenarios.validate(id, body) }
+    @PostMapping('/{id}/export')
+    void export(@PathVariable('id') String id, @RequestBody Map body, HttpServletResponse response) {
+        scenarios.export(id, body) { manifest ->
+            response.contentType = manifest.mediaType
+            response.setHeader('Content-Disposition', 'attachment; filename="' + manifest.filename + '"')
+            response.setHeader('Cache-Control', 'no-store')
+            response.setHeader('X-Content-Type-Options', 'nosniff')
+            response.setHeader('X-Manifest-SHA256', manifest.sha256)
+            response.setHeader('X-Scenario-Revision', manifest.metadata.scenario.revision as String)
+            response.setHeader('X-Export-Id', manifest.metadata.exportId as String)
+            response.setContentLengthLong(manifest.bytes)
+            Files.newInputStream(manifest.file).withCloseable { it.transferTo(response.outputStream) }
+            response.flushBuffer()
+        }
+    }
     @PostMapping('/{id}/overrides')
     Map override(@PathVariable('id') String id, @RequestBody Map body) { scenarios.override(id, body) }
     @PostMapping('/{id}/overrides/reset')

@@ -122,10 +122,67 @@ class ScenarioService {
                 }
                 snapshot.validation = validation; snapshot.validatedAt = Instant.now().toString()
                 exec(c, 'UPDATE scenarios SET status=?,snapshot_json=?,updated_at=current_timestamp WHERE id=? AND scanner_path=?',
-                    [validation.valid ? 'READY' : 'DRAFT', JsonOutput.toJson(snapshot), valid, source])
+                    [validation.valid ? (current.status == 'EXPORTED' ? 'EXPORTED' : 'READY') : 'DRAFT',
+                     JsonOutput.toJson(snapshot), valid, source])
                 required(c, source, valid)
             }
         } as Map
+    }
+
+    /** Stage a complete bounded manifest before committing any HTTP download headers. */
+    ScenarioManifest.Prepared prepareExport(String scenarioId, Map body) {
+        String valid = id(scenarioId)
+        ScenarioConfig.keys(body, ['revision', 'format', 'maxBytes'] as Set)
+        String format = body.format
+        if (!ScenarioManifest.MEDIA_TYPES.containsKey(format))
+            throw ScenarioConfig.invalid('Choose JSON, JSONL, or CSV for the export format.')
+        long limit = ScenarioConfig.integer(body.get('maxBytes', ScenarioManifest.DEFAULT_BYTES), 'maxBytes', 1, ScenarioManifest.MAX_BYTES)
+        // Retain the state owner across revalidation and staging. Delivery uses only the immutable temporary file.
+        state.withState { Connection c ->
+            Map current = required(c, scanner.sourceKey(), valid); revision(current, body.revision); currentSnapshot(current)
+            ScenarioManifest.Prepared prepared
+            try {
+                withBudget(current.config.maxSeconds as long) {
+                    Map verified = validate(valid, [revision: body.revision])
+                    if (!verified.snapshot.validation.valid) throw new ApiFailure('SCENARIO_NOT_READY', HttpStatus.CONFLICT,
+                        'The scenario failed validation. Review its snapshot and regenerate before exporting.')
+                    prepared = ScenarioManifest.prepare(c, verified, format, limit)
+                }
+                prepared
+            } catch (Throwable error) {
+                try { prepared?.close() } catch (IOException cleanup) { error.addSuppressed(cleanup) }
+                if (error instanceof IOException) throw new ApiFailure('SCENARIO_EXPORT_FAILED', HttpStatus.SERVICE_UNAVAILABLE,
+                    'The export could not be staged in temporary storage.', error)
+                throw error
+            }
+        } as ScenarioManifest.Prepared
+    }
+
+    void export(String scenarioId, Map body, Closure deliver) {
+        prepareExport(scenarioId, body).withCloseable { manifest ->
+            // Keep status readers behind delivery/completion; the scanner lock is already released.
+            state.withState { Connection ignored -> deliver.call(manifest); completeExport(manifest) }
+        }
+    }
+
+    /** A delivered earlier revision must never change the status of a newer edit or generation. */
+    void completeExport(ScenarioManifest.Prepared manifest) {
+        Map meta = manifest.metadata
+        state.transaction { Connection c ->
+            List found = rows(c, 'SELECT snapshot_json FROM scenarios WHERE scanner_path=? AND id=? AND revision=? AND generation_id=?',
+                [meta.sourceDatabase.path, meta.scenario.id, Long.parseLong(meta.scenario.revision as String), meta.scenario.generationId]) {
+                ResultSet r -> new JsonSlurper().parseText(r.getString(1)) as Map
+            }
+            if (found && !found[0].sourceChanged && found[0].sourceFingerprint == meta.sourceDatabase.fingerprint) {
+                Map snapshot = found[0]
+                snapshot.lastExport = [exportId: meta.exportId, format: meta.format, exportedAt: meta.exportedAt,
+                    revision: meta.scenario.revision, generationId: meta.scenario.generationId,
+                    bytes: manifest.bytes.toString(), sha256: manifest.sha256, recordCount: manifest.completion.recordCount]
+                exec(c, "UPDATE scenarios SET status='EXPORTED',snapshot_json=?,updated_at=current_timestamp WHERE id=? AND scanner_path=?",
+                    [JsonOutput.toJson(snapshot), meta.scenario.id, meta.sourceDatabase.path])
+            }
+            null
+        }
     }
 
     Map groups(String scenarioId, int limit = 100, String cursor = null) {
