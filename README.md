@@ -135,7 +135,7 @@ java -jar web-api/build/libs/fnord-dedup2-web.jar \
   --db /data/scans.duckdb --state-db /data/fnord-web.duckdb --port 8080
 ```
 
-Saved searches and scenarios live in the separately locked state database. The state path must differ from the scanner path. Scenario generation never opens source files, changes scanner data, or executes removal decisions. See [the web explorer guide](docs/WEB_UI.md) for the API and development workflow, and [the scenario guide](docs/SCENARIOS.md) for scope, precedence, validation, and limits.
+Saved searches, content signatures, and scenarios live in the separately locked state database. Add signatures from File Explorer or File Details, with an optional tag and memo. Matching size plus saved SHA-256 flags all copies as removal candidates, including singletons; red signature signals and amber duplicate signals appear while browsing. The state path must differ from the scanner path. Scenario generation never opens source files, changes scanner data, or executes removal decisions. See [the web explorer guide](docs/WEB_UI.md) for the API and development workflow, and [the scenario guide](docs/SCENARIOS.md) for scope, precedence, validation, and limits.
 
 ## Scripting
 

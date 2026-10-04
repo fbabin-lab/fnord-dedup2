@@ -144,6 +144,7 @@
 }
 @if (results(); as result) {
   <p class="coverage" [class.attention]="result.coverage.hasUnhashedFiles">{{ copy.hashWarning }}</p>
+  <app-candidate-legend />
   <section class="panel results-panel">
     <div class="table-wrap"><table>
       <thead><tr><th>{{ copy.name }}</th><th>{{ copy.scanLabel }}</th><th>{{ copy.relativePath }}</th>
@@ -151,14 +152,16 @@
         <th>{{ copy.duplicateStatus }}</th><th>{{ copy.actions }}</th></tr></thead>
       <tbody>
         @for (item of result.items; track item.scanId + ':' + item.entryId) {
-          <tr><td><button type="button" class="text-action file-name" (click)="openResult(item)">{{ item.filename }}</button></td>
+          <tr [class.signature-row]="item.signatureMatch" [class.duplicate-row]="item.duplicateCandidate"><td><button type="button" class="text-action file-name" (click)="openResult(item)">{{ item.filename }}</button></td>
             <td><button type="button" class="text-action" (click)="scanOpen.emit(item.scanId!)">{{ item.scanName }}</button></td>
             <td class="path-text">{{ item.relativePath }}</td><td>{{ item.kind }}</td>
             <td class="number">{{ item.kind === 'FILE' ? formatBytes(item.size) : '—' }}</td>
-            <td>{{ formatModified(item) }}</td><td>{{ item.kind === 'FILE' ? duplicateLabel(item) : '—' }}</td>
+            <td>{{ formatModified(item) }}</td><td>{{ item.kind === 'FILE' ? duplicateLabel(item) : '—' }} <app-candidate-badges [value]="item" /></td>
             <td class="actions"><button type="button" class="text-action" (click)="openResult(item)">{{ copy.details }}</button>
               @if (item.parentId > 0) { <button type="button" class="text-action" (click)="openContainingDirectory(item)">{{ copy.containingDirectory }}</button> }
               @if (item.hasError) { <span class="error-flag">{{ copy.hasError }}</span> }
+              @if (item.kind === 'FILE') { <button type="button" class="text-action" (click)="signatureOpen.emit(item)" [disabled]="!item.sha256"
+                [title]="item.sha256 ? 'Save or edit this content signature' : 'Run CLI hash --hash-complete first.'">{{ item.signatureMatch ? 'Edit signature' : 'Add signature' }}</button> }
             </td></tr>
         } @empty { <tr><td colspan="8" class="empty">{{ copy.noSearchResults }}</td></tr> }
       </tbody>

@@ -1,0 +1,10 @@
+.signature-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.signature-actions h2 { flex: 1; margin: 0; }
+.signature-matches { padding: 18px; margin-top: 20px; }
+.results-panel table { min-width: 800px; }
+.signature-matches table { min-width: 740px; }
+.signature-memo { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 120px; max-width: 320px; }
+.signature-dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); overflow: auto; padding: 24px; border: 1px solid #cfdcdf; border-radius: 12px; color: #192c39; }
+.signature-dialog::backdrop { background: rgb(17 38 46 / 45%); }
+.signature-dialog label { margin: 12px 0; }
+.hash-text { overflow-wrap: anywhere; font: 12px ui-monospace, monospace; max-width: 280px; }

@@ -10,15 +10,19 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping('/api/v1/duplicates')
 class DuplicateController {
     private final DuplicateService duplicates
+    private final SignatureService signatures
 
-    DuplicateController(DuplicateService duplicates) { this.duplicates = duplicates }
+    DuplicateController(DuplicateService duplicates, SignatureService signatures) {
+        this.duplicates = duplicates
+        this.signatures = signatures
+    }
 
     @PostMapping('/groups')
-    Map groups(@RequestBody(required=false) Map request) { duplicates.groups(request ?: [:]) }
+    Map groups(@RequestBody(required=false) Map request) { signatures.pageSignals(duplicates.groups(request ?: [:]), true) }
 
     @PostMapping('/groups/{groupId}/occurrences')
     Map occurrences(@PathVariable('groupId') String groupId,
                     @RequestBody(required=false) Map request) {
-        duplicates.occurrences(groupId, request ?: [:])
+        signatures.pageSignals(duplicates.occurrences(groupId, request ?: [:]))
     }
 }

@@ -5,6 +5,7 @@ import { Subscription } from 'rxjs';
 import { copy } from './copy';
 import { formatBytes, parseBytes } from './file-values';
 import { InventoryApi } from './inventory.api';
+import { CandidateBadgesComponent, CandidateLegendComponent, applySignatureChange } from './candidate-badges';
 import {
   ApiError, DuplicateGroup, DuplicateOccurrencePage, DuplicatePage, DuplicateRequest,
   Entry, NameOperator, Page, Scan
@@ -13,7 +14,7 @@ import {
 @Component({
   selector: 'app-duplicate-explorer',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, CandidateBadgesComponent, CandidateLegendComponent],
   templateUrl: './duplicate-explorer.html',
   styleUrls: ['./file-search.css', './duplicate-explorer.css']
 })
@@ -36,6 +37,7 @@ export class DuplicateExplorerComponent implements OnInit, OnChanges, OnDestroy 
   readonly initialScanId = input<number | null>(null);
   readonly initialEntryId = input<number | null>(null);
   readonly entryOpen = output<Entry>();
+  readonly signatureOpen = output<Entry>();
   readonly directoryOpen = output<{ scanId: number; entryId: number }>();
   readonly scanOpen = output<number>();
   readonly clearReference = output<number>();
@@ -72,7 +74,15 @@ export class DuplicateExplorerComponent implements OnInit, OnChanges, OnDestroy 
     }
   }
 
-  ngOnInit(): void { this.loadScans(null); }
+  ngOnInit(): void {
+    this.loadScans(null);
+    this.subscriptions.add(this.api.signatureChanges.subscribe(change => {
+      this.results.update(page => page ? { ...page, items: page.items.map(item => applySignatureChange(item, change)) } : null);
+      this.selectedGroup.update(group => group ? applySignatureChange(group, change) : null);
+      this.occurrences.update(page => page ? { ...page, group: applySignatureChange(page.group, change),
+        items: page.items.map(item => applySignatureChange(item, change)) } : null);
+    }));
+  }
   ngOnDestroy(): void {
     this.groupRequest?.unsubscribe(); this.occurrenceRequest?.unsubscribe();
     this.scanRequest?.unsubscribe(); this.subscriptions.unsubscribe();

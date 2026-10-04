@@ -22,9 +22,10 @@ import java.util.concurrent.locks.ReentrantLock
 @Service
 class WebStateStore implements AutoCloseable {
     private static final Set<String> LEGACY_TABLES = ['web_schema_info', 'saved_searches'] as Set<String>
-    private static final Set<String> TABLES = (LEGACY_TABLES + [
+    private static final Set<String> V2_TABLES = (LEGACY_TABLES + [
         'scenarios', 'scenario_groups', 'scenario_decisions', 'scenario_overrides'
     ]) as Set<String>
+    private static final Set<String> TABLES = (V2_TABLES + ['signatures']) as Set<String>
     private final String configuredPath
     private final ScannerDatabase scanner
     private final ReentrantLock access = new ReentrantLock(true)
@@ -236,7 +237,25 @@ class WebStateStore implements AutoCloseable {
                 try { current.rollback() } catch (Throwable rollback) { error.addSuppressed(rollback) }
                 throw error
             } finally { current.autoCommit = true }
-        } else if (versions != [2] || tables != TABLES) throw unsupported()
+            versions = [2]
+            tables = V2_TABLES
+        }
+        if (versions == [2] && tables == V2_TABLES) {
+            current.autoCommit = false
+            try {
+                String migration = WebStateStore.getResourceAsStream('/web-state-v3.sql').withCloseable {
+                    it.getText('UTF-8')
+                }
+                current.createStatement().withCloseable { statement ->
+                    migration.split(';').findAll { it.trim() }.each { statement.execute(it) }
+                    statement.execute('UPDATE web_schema_info SET version=3')
+                }
+                current.commit()
+            } catch (Throwable error) {
+                try { current.rollback() } catch (Throwable rollback) { error.addSuppressed(rollback) }
+                throw error
+            } finally { current.autoCommit = true }
+        } else if (versions != [3] || tables != TABLES) throw unsupported()
     }
 
     private static Map normalizeBody(Map body) {

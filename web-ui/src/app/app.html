@@ -16,6 +16,8 @@
         (click)="navigate('/search')">{{ copy.search }}</button>
       <button type="button" class="nav-item" [class.active]="view() === 'duplicates'"
         (click)="openDuplicates()">{{ copy.duplicates }}</button>
+      <button type="button" class="nav-item" [class.active]="view() === 'signatures'"
+        (click)="navigate('/signatures')">Signature store</button>
       <button type="button" class="nav-item" [class.active]="view() === 'scenarios'"
         (click)="openScenarios()">{{ copy.scenarios }}</button>
       <button type="button" class="nav-item" [class.active]="view() === 'errors'"
@@ -54,11 +56,13 @@
             <h1>{{ copy.duplicates }}</h1><p class="lead">{{ copy.duplicatesDescription }}</p>
           } @else if (view() === 'scenarios') {
             <h1>{{ copy.scenarios }}</h1><p class="lead">{{ copy.scenariosDescription }}</p>
+          } @else if (view() === 'signatures') {
+            <h1>Signature store</h1><p class="lead">Flag unwanted content by size and SHA-256, even when only one copy exists.</p>
           } @else {
             <h1>{{ copy.errors }}</h1><p class="lead">{{ scan()?.name }} · {{ copy.errorsDescription }}</p>
           }
         </div>
-        @if (view() !== 'search' && view() !== 'duplicates' && view() !== 'scenarios') {
+        @if (view() !== 'search' && view() !== 'duplicates' && view() !== 'scenarios' && view() !== 'signatures') {
           <button type="button" (click)="refresh()" [disabled]="loading()">{{ copy.retry }}</button>
         }
       </div>
@@ -217,18 +221,25 @@
                 <div class="actions-row"><button type="button" class="secondary" (click)="openSearch(scanId()!, directoryId())">{{ copy.searchThisDirectory }}</button>
                   <button type="button" class="secondary" (click)="scenarioForScan(scanId()!, directoryId())">{{ copy.scenarioThisDirectory }}</button></div></div>
               <div class="table-wrap">
+                <app-candidate-legend />
                 <table>
                   <thead><tr><th>{{ copy.name }}</th><th>{{ copy.type }}</th><th class="number">{{ copy.size }}</th>
-                    <th>{{ copy.modified }}</th><th>{{ copy.hashState }}</th></tr></thead>
+                    <th>{{ copy.modified }}</th><th>{{ copy.hashState }}</th><th>Candidate status</th><th>{{ copy.actions }}</th></tr></thead>
                   <tbody>
                     @for (item of listing.items; track item.entryId) {
-                      <tr><td><button type="button" class="text-action file-name" (click)="openEntry(item)">
+                      <tr [class.signature-row]="item.signatureMatch" [class.duplicate-row]="item.duplicateCandidate"><td><button type="button" class="text-action file-name" (click)="openEntry(item)">
                         <span aria-hidden="true">{{ item.kind === 'DIRECTORY' ? '▸' : '•' }}</span>
                         {{ item.filename }}</button></td><td>{{ item.kind }}</td>
                         <td class="number">{{ item.kind === 'FILE' ? formatBytes(item.size) : '—' }}</td>
                         <td>{{ formatModified(item) }}</td>
-                        <td>{{ item.kind === 'FILE' ? (item.sha256 ? copy.hashed : copy.unknownHash) : '—' }}</td></tr>
-                    } @empty { <tr><td colspan="5" class="empty">{{ copy.emptyDirectory }}</td></tr> }
+                        <td>{{ item.kind === 'FILE' ? (item.sha256 ? copy.hashed : copy.unknownHash) : '—' }}</td>
+                        <td><app-candidate-badges [value]="item" /></td>
+                        <td>@if (item.kind === 'FILE') {
+                          <button type="button" class="text-action" (click)="openSignature(item)" [disabled]="!item.sha256"
+                            [title]="item.sha256 ? 'Save or edit this content signature' : 'Run CLI hash --hash-complete to save a hash first.'">
+                            {{ item.signatureMatch ? 'Edit signature' : 'Add signature' }}</button>
+                        }</td></tr>
+                    } @empty { <tr><td colspan="7" class="empty">{{ copy.emptyDirectory }}</td></tr> }
                   </tbody>
                 </table>
               </div>
@@ -245,18 +256,22 @@
       @if (view() === 'search') {
         <app-file-search [initialScanId]="scanId()" [initialDirectoryId]="searchDirectoryId()"
           (entryOpen)="openEntry($event)" (directoryOpen)="openSearchDirectory($event)"
-          (scanOpen)="openScan($event)" (scenarioOpen)="createScenario($event)" />
+          (scanOpen)="openScan($event)" (scenarioOpen)="createScenario($event)" (signatureOpen)="openSignature($event)" />
       }
 
       @if (view() === 'duplicates') {
         <app-duplicate-explorer [initialScanId]="scanId()" [initialEntryId]="duplicateEntryId()"
           (entryOpen)="openEntry($event)" (directoryOpen)="openSearchDirectory($event)"
-          (scanOpen)="openScan($event)" (clearReference)="openDuplicates($event)" (scenarioOpen)="createScenario($event)" />
+          (scanOpen)="openScan($event)" (clearReference)="openDuplicates($event)" (scenarioOpen)="createScenario($event)" (signatureOpen)="openSignature($event)" />
       }
 
       @if (view() === 'scenarios') {
         <app-scenario-builder [initialId]="scenarioId()" [seed]="scenarioSeed()"
           (scenarioOpen)="openScenario($event)" (entryOpen)="openEntry($event)" (directoryOpen)="openSearchDirectory($event)" />
+      }
+
+      @if (view() === 'signatures') {
+        <app-signature-store (entryOpen)="openEntry($event)" (directoryOpen)="openSearchDirectory($event)" />
       }
 
       @if (view() === 'errors') {
@@ -290,6 +305,7 @@
           @if (detailProblem(); as issue) { <p class="message error" role="alert">{{ issue.message }}</p> }
           @if (selectedEntry(); as file) {
             <h3 class="file-name">{{ file.filename }}</h3>
+            <app-candidate-badges [value]="file" />
             <dl class="detail-list">
               <div><dt>{{ copy.path }}</dt><dd class="path-text">{{ file.path }}</dd></div>
               <div><dt>{{ copy.relativePath }}</dt><dd class="path-text">{{ file.relativePath }}</dd></div>
@@ -302,7 +318,15 @@
                 <dd>{{ file.duplicateCount === null ? copy.unknownHash : file.duplicateCount }}</dd></div>
             </dl>
             @if (file.kind === 'FILE' && file.sha256) {
-              <button type="button" (click)="findDuplicates(file)">{{ copy.findDuplicates }}</button>
+              <div class="actions-row"><button type="button" (click)="findDuplicates(file)">{{ copy.findDuplicates }}</button>
+                <button type="button" class="secondary" (click)="openSignature(file)">{{ file.signatureMatch ? 'Edit signature' : 'Add signature' }}</button></div>
+            } @else if (file.kind === 'FILE') {
+              <p class="hint">To add a signature, first save its hash using the CLI hash command with <code>--hash-complete</code>, then refresh.</p>
+            }
+            @if (file.signature; as signature) {
+              <dl class="detail-list"><div><dt>Signature tag</dt><dd>{{ signature.tag || '—' }}</dd></div>
+                <div><dt>Signature memo</dt><dd class="signature-note">{{ signature.memo || '—' }}</dd></div></dl>
+              <p class="hint">All files with this size and SHA-256 are removal candidates, including every duplicate copy.</p>
             }
             @if (file.relatedErrors?.length) {
               <h3>{{ copy.relatedErrors }}</h3>
@@ -313,6 +337,9 @@
             <p class="hint">{{ copy.historicalObservation }}</p>
           }
         </aside>
+      }
+      @if (signatureEntry(); as entry) {
+        <app-signature-editor [entry]="entry" (closed)="signatureEntry.set(null)" />
       }
     </div>
   </main>

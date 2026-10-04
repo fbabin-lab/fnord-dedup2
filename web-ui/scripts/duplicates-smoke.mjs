@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { chromium } from 'playwright';
 import { checkScenarioHttp, checkScenarioBrowser } from './scenario-smoke.mjs';
+import { checkSignatureHttp, checkSignatureBrowser } from './signature-smoke.mjs';
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const output = path.join(project, 'build/web-ui-smoke');
@@ -32,8 +33,20 @@ async function main() {
       }
       fs.writeFileSync(path.join(root, 'unresolved.bin'), 'an intentionally unique-size unresolved payload whose hash is absent');
     }
+    if (scan === 3) fs.writeFileSync(path.join(root, 'signature-singleton.txt'), 'Unwanted singleton with a full saved hash');
     const result = spawnSync(cli, ['--db', db, 'scan', '--name', `scan-${scan}`, '--root', root, '--quiet'], { encoding: 'utf8', timeout: 60_000 });
     assert.equal(result.status, 0, result.stderr);
+    const inventory = JSON.parse(result.stdout);
+    assert.equal(inventory.scan_id, scan, 'fixture scans must persist across CLI processes');
+    assert.equal(inventory.phase, 'COMPLETE', 'fixture scan must finish before web queries');
+    const saved = spawnSync(cli, ['--db', db, 'list'], { encoding: 'utf8', timeout: 60_000 });
+    assert.equal(saved.status, 0, saved.stderr);
+    assert.deepEqual(JSON.parse(saved.stdout).map(item => item.scan_id),
+      Array.from({ length: scan }, (_, index) => index + 1), 'fixture inventory readback');
+    if (scan === 3) {
+      const hash = spawnSync(cli, ['--db', db, 'hash', '--name', 'scan-3', '--hash-complete', '--quiet'], { encoding: 'utf8', timeout: 60_000 });
+      assert.equal(hash.status, 0, hash.stderr);
+    }
   }
   const digest = () => crypto.createHash('sha256').update(fs.readFileSync(db)).digest('hex');
   const before = digest();
@@ -57,7 +70,7 @@ async function main() {
     assert((await fetch(base + '/')).ok);
     const request = { scanIds: [1, 2], mode: 'ACROSS_SCANS', name: { value: 'shared-one.txt', operator: 'EXACT' }, limit: 100 };
     const groups = await post('/api/v1/duplicates/groups', request);
-    assert.equal(groups.status, 200);
+    assert.equal(groups.status, 200, JSON.stringify(groups.body));
     assert.equal(groups.body.items.length, 1);
     assert.equal(groups.body.items[0].occurrences, 114);
     assert.equal(groups.body.items[0].matchingOccurrences, 1);
@@ -74,9 +87,11 @@ async function main() {
     assert.equal((await post('/api/v1/duplicates/groups', { scanIds: [1], name: { operator: 'REGEX', value: '[' } })).status, 400);
     console.log('PASS: packaged HTTP groups, occurrence pagination, scope/filter binding, malformed JSON, and static UI');
     await checkScenarioHttp(base);
+    await checkSignatureHttp(base);
     if (httpOnly) return;
 
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({ headless: true,
+      ...(process.env.FNORD_SMOKE_BROWSER_EXECUTABLE ? { executablePath: process.env.FNORD_SMOKE_BROWSER_EXECUTABLE } : {}) });
     const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
     page.setDefaultTimeout(20_000);
     const runtimeErrors = [];
@@ -139,6 +154,7 @@ async function main() {
     assert.deepEqual(runtimeErrors, []);
     console.log('PASS: browser scope selection, filters, group/occurrence paging, cross-scan file links, route changes, and mobile layout');
     await checkScenarioBrowser(page, base, output);
+    await checkSignatureBrowser(page, base, output);
     assert.deepEqual(runtimeErrors, []);
   } catch (error) {
     const page = browser?.contexts()[0]?.pages()[0];

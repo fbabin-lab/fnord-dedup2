@@ -1,0 +1,49 @@
+<div class="signature-actions"><button type="button" class="secondary" (click)="refresh()" [disabled]="loading() || deleteBusy()">Refresh signatures</button></div>
+<p class="hint">Add a file from File Explorer, file search, or File Details. A signature applies to all scans and future scans using this Web state database.</p>
+<app-candidate-legend />
+@if (problem()) { <p class="message error" role="alert">{{ problem() }}</p> }
+@if (loading()) { <p class="message" role="status">Loading signatures…</p> }
+@if (deleting(); as signature) {
+  <div class="message" role="alert">
+    <p>Remove the signature {{ signature.tag || signature.sha256 }}? Its match signals will be cleared.</p>
+    <div class="signature-actions"><button type="button" (click)="remove()" [disabled]="deleteBusy()">Remove signature</button>
+      <button type="button" class="secondary" (click)="deleting.set(null)" [disabled]="deleteBusy()">Cancel</button></div>
+  </div>
+}
+@if (entries(); as listing) {
+  <section class="panel results-panel"><div class="table-wrap"><table>
+    <thead><tr><th>Tag</th><th class="number">Size</th><th>SHA-256</th><th>Memo</th><th>Actions</th></tr></thead>
+    <tbody>@for (signature of listing.items; track signature.id) {
+      <tr><td>{{ signature.tag || '—' }}</td><td class="number">{{ formatBytes(signature.size) }}</td>
+        <td class="hash-text">{{ signature.sha256 }}</td><td class="signature-memo">{{ signature.memo || '—' }}</td>
+        <td class="actions"><button type="button" class="text-action" (click)="openMatches(signature)">Find matches</button>
+          <button type="button" class="text-action" (click)="editing.set(signature)">Edit signature</button>
+          <button type="button" class="text-action" (click)="deleting.set(signature)" [disabled]="deleteBusy()">Delete signature</button></td></tr>
+    } @empty { <tr><td colspan="5" class="empty">No signatures saved. Select a hashed file to add its signature.</td></tr> }</tbody>
+  </table></div>
+    <div class="pagination"><button type="button" class="secondary" (click)="previous()" [disabled]="loading() || !canPrevious()">Previous</button>
+      <span>{{ listing.items.length }} on this page</span><button type="button" class="secondary" (click)="next()" [disabled]="loading() || !listing.page.hasMore">Next</button></div>
+  </section>
+}
+@if (selected(); as signature) {
+  <section class="panel signature-matches" aria-label="Signature matches">
+    <div class="signature-actions"><h2>Matching removal candidates · {{ signature.tag || 'Signature' }}</h2>
+      <button type="button" class="secondary" (click)="closeMatches()">Close matches</button></div>
+    <p class="hint">Size and saved SHA-256 must both match. All copies are included. Unhashed files remain unresolved.</p>
+    @if (matchLoading()) { <p class="message" role="status">Finding matches…</p> }
+    @if (matchProblem()) { <p class="message error" role="alert">{{ matchProblem() }}</p> }
+    @if (matches(); as result) {
+      <p>{{ result.total }} recorded matches across the configured database.</p>
+      <div class="table-wrap"><table><thead><tr><th>Scan</th><th>Path</th><th>Candidate status</th><th>Actions</th></tr></thead><tbody>
+        @for (item of result.items; track item.scanId + ':' + item.entryId) {
+          <tr class="signature-row" [class.duplicate-row]="item.duplicateCandidate"><td>{{ item.scanName }}</td><td class="path-text">{{ item.path }}</td>
+            <td><app-candidate-badges [value]="item" /></td><td class="actions"><button type="button" class="text-action" (click)="entryOpen.emit(item)">Details</button>
+              <button type="button" class="text-action" (click)="directoryOpen.emit({ scanId: item.scanId!, entryId: item.parentId })">Containing directory</button></td></tr>
+        } @empty { <tr><td colspan="4" class="empty">No recorded files match this signature.</td></tr> }
+      </tbody></table></div>
+      <div class="pagination"><button type="button" class="secondary" (click)="previousMatches()" [disabled]="matchLoading() || !canPreviousMatches()">Previous</button>
+        <span>{{ result.items.length }} on this page</span><button type="button" class="secondary" (click)="nextMatches()" [disabled]="matchLoading() || !result.page.hasMore">Next</button></div>
+    }
+  </section>
+}
+@if (editing(); as signature) { <app-signature-editor [signature]="signature" (closed)="editing.set(null)" /> }

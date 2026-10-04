@@ -103,6 +103,7 @@ tr:hover td { background: #fbfdfc; }
 .listing-panel .section-heading { padding: 18px 18px 0; }
 .listing-panel .section-heading h2 { font-size: 14px; }
 .drawer-backdrop { position: fixed; inset: 0; z-index: 10; background: rgba(17, 38, 46, .25); }
+.signature-note { white-space: pre-wrap; overflow-wrap: anywhere; }
 .detail-drawer { position: fixed; z-index: 11; right: 0; top: 0; bottom: 0; width: min(560px, 95vw);
   overflow: auto; background: white; padding: 26px 30px; box-shadow: -10px 0 35px rgba(18, 42, 52, .18); }
 .detail-drawer h3.file-name { text-transform: none; letter-spacing: 0; font-size: 19px;
