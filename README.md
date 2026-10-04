@@ -127,7 +127,7 @@ Nested archive/image dispatch, differencing VHD/VHDX, password management, OS in
 
 ## Optional web explorer
 
-The Spring Boot and Angular companion opens a scanner database read-only. It provides scan summaries, lazy directory browsing, recorded errors, bounded server-side file search, and a Duplicate Explorer with explicitly selected scan scopes and paged occurrence views. Search and duplicate filters cover names, paths, extensions, byte sizes, modified times, and errors. Missing hashes remain unresolved, and duplicate totals describe historical observations rather than reclaimable space.
+The Spring Boot and Angular companion opens a scanner database read-only. It provides scan summaries, lazy directory browsing, recorded errors, bounded server-side file search, a Duplicate Explorer, and a Scenario Builder with explicitly selected scan scopes and paged decisions. Search and duplicate filters cover names, paths, extensions, byte sizes, modified times, and errors. Scenarios save ordered retention rules, protected paths, manual choices, and validated planning snapshots. Missing hashes remain unresolved, and duplicate totals describe historical observations rather than reclaimable space.
 
 ```bash
 ./gradlew :web-api:bootJar
@@ -135,7 +135,7 @@ java -jar web-api/build/libs/fnord-dedup2-web.jar \
   --db /data/scans.duckdb --state-db /data/fnord-web.duckdb --port 8080
 ```
 
-Saved searches are the only mutable web data and live in the separately locked state database. The state path must differ from the scanner path. See [the web explorer guide](docs/WEB_UI.md) for the API, security boundary, page cursors, and development workflow.
+Saved searches and scenarios live in the separately locked state database. The state path must differ from the scanner path. Scenario generation never opens source files, changes scanner data, or executes removal decisions. See [the web explorer guide](docs/WEB_UI.md) for the API and development workflow, and [the scenario guide](docs/SCENARIOS.md) for scope, precedence, validation, and limits.
 
 ## Scripting
 

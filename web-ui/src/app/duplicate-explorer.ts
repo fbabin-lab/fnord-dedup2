@@ -39,6 +39,7 @@ export class DuplicateExplorerComponent implements OnInit, OnChanges, OnDestroy 
   readonly directoryOpen = output<{ scanId: number; entryId: number }>();
   readonly scanOpen = output<number>();
   readonly clearReference = output<number>();
+  readonly scenarioOpen = output<DuplicateRequest>();
   readonly copy = copy;
   readonly formatBytes = formatBytes;
   readonly scans = signal<Page<Scan> | null>(null);
@@ -122,6 +123,12 @@ export class DuplicateExplorerComponent implements OnInit, OnChanges, OnDestroy 
     if (this.history.length) this.loadGroups(this.history.pop() ?? null);
   }
   canPrevious(): boolean { return this.history.length > 0; }
+  createScenario(): void { if (this.submitted) this.scenarioOpen.emit(structuredClone(this.submitted)); }
+  planGroup(): void {
+    const first = this.occurrences()?.items[0];
+    if (first?.scanId && this.submitted) this.scenarioOpen.emit({ ...structuredClone(this.submitted),
+      entry: { scanId: first.scanId, entryId: first.entryId } });
+  }
 
   openGroup(group: DuplicateGroup): void {
     this.selectedGroup.set(group); this.occurrenceHistory = [];

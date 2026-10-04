@@ -6,6 +6,8 @@ import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.bind.MissingServletRequestParameterException
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 
 @RestControllerAdvice
 class ApiErrors {
@@ -22,6 +24,13 @@ class ApiErrors {
     ResponseEntity<Map<String, Object>> malformed(HttpMessageNotReadableException error) {
         ResponseEntity.status(HttpStatus.BAD_REQUEST).body([
             code: 'INVALID_REQUEST', message: 'The JSON request body is not valid.', details: null
+        ])
+    }
+
+    @ExceptionHandler([MissingServletRequestParameterException, MethodArgumentTypeMismatchException])
+    ResponseEntity<Map<String, Object>> invalidParameter(Exception error) {
+        ResponseEntity.status(HttpStatus.BAD_REQUEST).body([
+            code: 'INVALID_REQUEST', message: 'A required query parameter is missing or has an invalid value.', details: null
         ])
     }
 

@@ -5,18 +5,19 @@ import { copy } from './copy';
 import { DirectoryTreeComponent } from './directory-tree';
 import { FileSearchComponent } from './file-search';
 import { DuplicateExplorerComponent } from './duplicate-explorer';
+import { ScenarioBuilderComponent } from './scenario-builder';
 import { InventoryApi } from './inventory.api';
 import {
-  ApiError, Breadcrumb, ChildPage, Dashboard, DatabaseStatus, Entry, Page,
+  ApiError, Breadcrumb, ChildPage, Dashboard, DatabaseStatus, DuplicateRequest, Entry, Page,
   Registration, Scan, ScanError, ScanFilters
 } from './inventory.models';
 
-type View = 'dashboard' | 'scans' | 'scan' | 'explorer' | 'search' | 'duplicates' | 'errors';
+type View = 'dashboard' | 'scans' | 'scan' | 'explorer' | 'search' | 'duplicates' | 'scenarios' | 'errors';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [DirectoryTreeComponent, FileSearchComponent, DuplicateExplorerComponent],
+  imports: [DirectoryTreeComponent, FileSearchComponent, DuplicateExplorerComponent, ScenarioBuilderComponent],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
@@ -40,6 +41,8 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly directoryId = signal(1);
   readonly searchDirectoryId = signal<number | null>(null);
   readonly duplicateEntryId = signal<number | null>(null);
+  readonly scenarioId = signal<string | null>(null);
+  readonly scenarioSeed = signal<DuplicateRequest | null>(null);
   readonly registration = signal<Registration | null>(null);
   readonly status = signal<DatabaseStatus | null>(null);
   readonly dashboard = signal<Dashboard | null>(null);
@@ -96,6 +99,17 @@ export class AppComponent implements OnInit, OnDestroy {
   findDuplicates(entry: Entry): void {
     const id = entry.scanId ?? this.scanId();
     if (id) this.openDuplicates(id, entry.entryId);
+  }
+  openScenarios(): void { this.scenarioSeed.set(null); this.navigate('/scenarios'); }
+  openScenario(id: string | null): void {
+    this.scenarioSeed.set(null); this.navigate('/scenarios/' + (id ?? 'new'));
+  }
+  createScenario(request: DuplicateRequest): void {
+    this.scenarioSeed.set(structuredClone(request)); this.navigate('/scenarios/new');
+  }
+  scenarioForScan(scanId: number, entryId?: number): void {
+    this.createScenario({ scanIds: [scanId],
+      ...(entryId ? { directory: { scanId, entryId, recursive: true } } : {}) });
   }
   openErrors(id?: number): void {
     const target = id ?? this.scanId();
@@ -197,6 +211,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const id = Number(parts[1]), entryId = Number(parts[3]), searchEntryId = Number(parts[2]);
     this.searchDirectoryId.set(null);
     this.duplicateEntryId.set(null);
+    this.scenarioId.set(null);
     if (parts[0] === 'scans' && parts.length === 1) {
       this.view.set('scans'); this.scanId.set(null);
     } else if (parts[0] === 'search' && parts.length === 1) {
@@ -213,6 +228,10 @@ export class AppComponent implements OnInit, OnDestroy {
                 Number.isSafeInteger(searchEntryId) && searchEntryId > 0))) {
       this.view.set('duplicates'); this.scanId.set(id);
       this.duplicateEntryId.set(parts.length === 3 ? searchEntryId : null);
+    } else if (parts[0] === 'scenarios' && (parts.length === 1 ||
+               (parts.length === 2 && (parts[1] === 'new' || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parts[1]))))) {
+      this.view.set('scenarios'); this.scanId.set(null);
+      this.scenarioId.set(parts.length === 2 && parts[1] !== 'new' ? parts[1].toLowerCase() : null);
     } else if (parts[0] === 'scans' && Number.isSafeInteger(id) && id > 0 &&
                parts.length === 2) {
       this.view.set('scan'); this.scanId.set(id);
@@ -242,7 +261,7 @@ export class AppComponent implements OnInit, OnDestroy {
         recent: this.api.scans(null, { name: '', phase: '', hasErrors: '' }, 10)
       }), result => { this.dashboard.set(result.metrics); this.scans.set(result.recent); });
     } else if (this.view() === 'scans') this.loadScanPage();
-    else if (this.view() === 'search' || this.view() === 'duplicates') this.loading.set(false);
+    else if (this.view() === 'search' || this.view() === 'duplicates' || this.view() === 'scenarios') this.loading.set(false);
     else {
       const id = this.scanId();
       if (!id) return;

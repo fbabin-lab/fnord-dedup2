@@ -33,7 +33,7 @@ jobs:
       - name: Install browser for web explorer smoke
         working-directory: web-ui
         run: npx --no-install playwright install --with-deps chromium
-      - name: Packaged duplicate explorer HTTP and browser smoke
+      - name: Packaged duplicate explorer and scenario HTTP/browser smoke
         run: node web-ui/scripts/duplicates-smoke.mjs
       - name: Verify build without optional archive runtime
         env:
@@ -66,7 +66,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-reports
-          path: build/reports/tests/
+          path: |
+            build/reports/tests/
+            web-api/build/reports/tests/
           if-no-files-found: ignore
           retention-days: 7
       - name: Upload web explorer screenshots

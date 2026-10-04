@@ -88,7 +88,7 @@ class ScannerDatabase {
         }
     }
 
-    private void configureSession(Connection connection) {
+    void configureSession(Connection connection) {
         if (!(memoryLimit ==~ /(?i)[1-9][0-9]*(MB|GB)/) ||
             databaseThreads < 1 || databaseThreads > 16) {
             throw new ApiFailure('INVALID_SERVER_CONFIGURATION', HttpStatus.INTERNAL_SERVER_ERROR,

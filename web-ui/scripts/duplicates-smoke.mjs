@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { chromium } from 'playwright';
+import { checkScenarioHttp, checkScenarioBrowser } from './scenario-smoke.mjs';
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const output = path.join(project, 'build/web-ui-smoke');
@@ -72,6 +73,7 @@ async function main() {
     assert.equal((await post('/api/v1/duplicates/groups', [])).status, 400);
     assert.equal((await post('/api/v1/duplicates/groups', { scanIds: [1], name: { operator: 'REGEX', value: '[' } })).status, 400);
     console.log('PASS: packaged HTTP groups, occurrence pagination, scope/filter binding, malformed JSON, and static UI');
+    await checkScenarioHttp(base);
     if (httpOnly) return;
 
     browser = await chromium.launch({ headless: true });
@@ -136,6 +138,8 @@ async function main() {
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'mobile page width');
     assert.deepEqual(runtimeErrors, []);
     console.log('PASS: browser scope selection, filters, group/occurrence paging, cross-scan file links, route changes, and mobile layout');
+    await checkScenarioBrowser(page, base, output);
+    assert.deepEqual(runtimeErrors, []);
   } catch (error) {
     const page = browser?.contexts()[0]?.pages()[0];
     if (page) {

@@ -3,9 +3,10 @@ import { Component, OnDestroy, OnInit, inject, input, output, signal } from '@an
 import { FormsModule } from '@angular/forms';
 import { Subject, Subscription, debounceTime } from 'rxjs';
 import { copy } from './copy';
+import { requestFromSearch } from './scenario-form';
 import { InventoryApi } from './inventory.api';
 import {
-  ApiError, Entry, EntryKind, FileSearchPage, FileSearchRequest, NameOperator,
+  ApiError, DuplicateRequest, Entry, EntryKind, FileSearchPage, FileSearchRequest, NameOperator,
   SavedSearch, Scan
 } from './inventory.models';
 
@@ -55,6 +56,7 @@ export class FileSearchComponent implements OnInit, OnDestroy {
   readonly entryOpen = output<Entry>();
   readonly directoryOpen = output<{ scanId: number; entryId: number }>();
   readonly scanOpen = output<number>();
+  readonly scenarioOpen = output<DuplicateRequest>();
   readonly initialScanId = input<number | null>(null);
   readonly initialDirectoryId = input<number | null>(null);
   readonly copy = copy;
@@ -194,6 +196,11 @@ export class FileSearchComponent implements OnInit, OnDestroy {
   duplicateLabel(entry: Entry): string {
     if (!entry.sha256 || entry.duplicateCount == null) return copy.unknownHash;
     return entry.duplicateCount >= 2 ? `${entry.duplicateCount} ${copy.confirmed}` : copy.noConfirmedDuplicate;
+  }
+
+  createScenario(): void {
+    try { this.scenarioOpen.emit(requestFromSearch(this.buildRequest())); }
+    catch (error) { this.problem.set({ code: 'INVALID_SCENARIO', message: (error as Error).message }); }
   }
 
   private startSearch(cursor: string | null, resetHistory: boolean): void {

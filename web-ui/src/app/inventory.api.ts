@@ -4,7 +4,8 @@ import {
   Breadcrumb, ChildPage, Dashboard, DatabaseStatus, DuplicateOccurrencePage,
   DuplicatePage, DuplicateRequest, Entry, FileSearchPage,
   FileSearchRequest, Page, Registration, SavedSearch, SavedSearchList, Scan,
-  ScanError, ScanFilters
+  ScanError, ScanFilters, Scenario, ScenarioConfig, ScenarioListItem, ScenarioGroup,
+  ScenarioDecision, ScenarioPage
 } from './inventory.models';
 
 @Injectable({ providedIn: 'root' })
@@ -60,5 +61,36 @@ export class InventoryApi {
   }
   deleteSavedSearch(id: string) {
     return this.http.delete<void>('/api/v1/saved-searches/' + encodeURIComponent(id));
+  }
+  scenarios(cursor: string | null, limit = 50) {
+    let params = new HttpParams().set('limit', limit);
+    if (cursor) params = params.set('cursor', cursor);
+    return this.http.get<Page<ScenarioListItem>>('/api/v1/scenarios', { params });
+  }
+  scenario(id: string) { return this.http.get<Scenario>('/api/v1/scenarios/' + encodeURIComponent(id)); }
+  saveScenario(id: string | null, body: { name: string; description: string; config: ScenarioConfig; revision?: number }) {
+    return id ? this.http.put<Scenario>('/api/v1/scenarios/' + encodeURIComponent(id), body) :
+      this.http.post<Scenario>('/api/v1/scenarios', body);
+  }
+  deleteScenario(id: string, revision: number) {
+    return this.http.delete<void>('/api/v1/scenarios/' + encodeURIComponent(id), { params: new HttpParams().set('revision', revision) });
+  }
+  scenarioAction(id: string, action: 'generate' | 'validate' | 'overrides/reset', revision: number) {
+    return this.http.post<Scenario>('/api/v1/scenarios/' + encodeURIComponent(id) + '/' + action, { revision });
+  }
+  scenarioOverride(id: string, revision: number, scanId: number, entryId: number, decision: string) {
+    return this.http.post<Scenario>('/api/v1/scenarios/' + encodeURIComponent(id) + '/overrides',
+      { revision, decisions: [{ scanId, entryId, decision }] });
+  }
+  scenarioGroups(id: string, cursor: string | null, limit = 100) {
+    let params = new HttpParams().set('limit', limit);
+    if (cursor) params = params.set('cursor', cursor);
+    return this.http.get<ScenarioPage<ScenarioGroup>>('/api/v1/scenarios/' + encodeURIComponent(id) + '/groups', { params });
+  }
+  scenarioDecisions(id: string, group: string, cursor: string | null, limit = 100) {
+    let params = new HttpParams().set('limit', limit);
+    if (cursor) params = params.set('cursor', cursor);
+    return this.http.get<ScenarioPage<ScenarioDecision>>('/api/v1/scenarios/' + encodeURIComponent(id) + '/groups/' +
+      encodeURIComponent(group) + '/decisions', { params });
   }
 }

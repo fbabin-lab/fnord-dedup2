@@ -1,0 +1,182 @@
+<p class="coverage">{{ copy.planning }}</p>
+@if (problem(); as issue) { <p class="message error" role="alert"><strong>{{ issue.code }}</strong> {{ issue.message }}</p> }
+@if (loading() || busy()) { <p class="message" role="status">{{ copy.loading }}</p> }
+
+<section class="panel scenario-list" [attr.aria-label]="copy.savedScenarios">
+  <div class="section-heading"><h2>{{ copy.savedScenarios }}</h2>
+    <button type="button" class="secondary" (click)="startNew()" [disabled]="busy()">{{ copy.newScenario }}</button></div>
+  <div class="table-wrap"><table><thead><tr><th>{{ copy.name }}</th><th>{{ copy.phase }}</th><th>{{ copy.updated }}</th></tr></thead>
+    <tbody>@for (item of list()?.items ?? []; track item.id) {
+      <tr><td><button type="button" class="text-action" [disabled]="busy()" (click)="scenarioOpen.emit(item.id)">{{ item.name }}</button></td>
+        <td><span class="badge">{{ item.status }}</span></td><td>{{ item.updatedAt }}</td></tr>
+    } @empty { <tr><td colspan="3" class="empty">{{ copy.noScenarios }}</td></tr> }</tbody>
+  </table></div>
+  <div class="pagination"><button type="button" class="secondary" (click)="previousList()" [disabled]="listLoading() || !canPreviousList()">{{ copy.previous }}</button>
+    <span>{{ list()?.items?.length ?? 0 }} {{ copy.onPage }}</span>
+    <button type="button" class="secondary" (click)="nextList()" [disabled]="listLoading() || !list()?.page?.hasMore">{{ copy.next }}</button></div>
+</section>
+
+<form class="search-form scenario-form" (submit)="save($event)">
+  <fieldset [disabled]="busy() || loading()">
+    <section class="panel definition-panel">
+      <div class="section-heading"><h2>{{ copy.definition }}</h2>
+        @if (record(); as item) { <span class="badge">{{ item.status }} · {{ item.revision }}</span> }</div>
+      <div class="editor-grid"><label>{{ copy.scenarioName }}<input name="scenarioName" maxlength="120" required [(ngModel)]="form.name" (ngModelChange)="dirty=true"></label>
+        <label>{{ copy.description }}<textarea name="description" maxlength="2000" rows="2" [(ngModel)]="form.description" (ngModelChange)="dirty=true"></textarea></label></div>
+    </section>
+
+    <details open class="scope-panel"><summary>{{ copy.scope }}</summary>
+      <p class="hint">{{ copy.scopeHint }}</p>
+      <div class="saved-search-picker"><label>{{ copy.savedSearch }}<select name="savedSearch" [attr.aria-label]="copy.savedSearch" [(ngModel)]="savedSearchId">
+        <option value="">{{ copy.noSearch }}</option>@for (search of savedSearches(); track search.id) { <option [value]="search.id">{{ search.name }}</option> }
+      </select></label><button type="button" class="secondary" (click)="useSavedSearch()" [disabled]="!savedSearchId">{{ copy.useSearch }}</button></div>
+      <div class="scan-picker"><div>
+        <div class="scan-filter"><label>{{ copy.filterName }}<input type="search" name="scanFilter" [(ngModel)]="scanNameFilter"></label>
+          <button type="button" class="secondary" (click)="findScans()" [disabled]="scanLoading()">{{ copy.findScans }}</button></div>
+        <label>{{ copy.scans }}<select multiple [attr.aria-label]="copy.scanSelection" (change)="selectScans($event)">
+          @for (scan of scans()?.items ?? []; track scan.scanId) { <option [value]="scan.scanId" [selected]="form.scanIds.includes(scan.scanId)">{{ scan.name }} · {{ scan.phase }}</option> }
+        </select></label>
+        <div class="pagination"><button type="button" class="secondary" (click)="previousScans()" [disabled]="scanLoading() || !canPreviousScans()">{{ copy.previous }}</button>
+          <span>{{ scans()?.items?.length ?? 0 }} {{ copy.onPage }}</span>
+          <button type="button" class="secondary" (click)="nextScans()" [disabled]="scanLoading() || !scans()?.page?.hasMore">{{ copy.next }}</button></div>
+      </div><div><p class="hint">{{ form.scanIds.length }} {{ copy.selectedScanCount }}</p><div class="selected-scans">
+        @for (id of form.scanIds; track id) { <button type="button" class="secondary" (click)="removeScan(id)" [attr.aria-label]="copy.removeScan + ': ' + scanLabel(id)">{{ scanLabel(id) }} ×</button> }
+      </div></div></div>
+      @if (directoryLabel()) { <p class="reference-note path-text">{{ directoryLabel() }}
+        <button type="button" class="secondary" (click)="clearDirectory()">{{ copy.clearDirectory }}</button></p> }
+      @if (referenceLabel()) { <p class="reference-note path-text">{{ copy.referenceFile }}: {{ referenceLabel() }}
+        <button type="button" class="secondary" (click)="clearReference()">{{ copy.clearReference }}</button></p> }
+      <div class="filter-grid scope-grid">
+        <label class="wide">{{ copy.groupMode }}<select name="mode" [(ngModel)]="form.mode" (ngModelChange)="dirty=true">
+          <option value="ANY">{{ copy.allSelectedGroups }}</option><option value="ACROSS_SCANS">{{ copy.acrossSelectedOnly }}</option>
+        </select></label>
+        <label>{{ copy.minimumOccurrences }}<input type="number" name="minOccurrences" min="2" step="1" [(ngModel)]="form.minOccurrences" (ngModelChange)="dirty=true"></label>
+        <label>{{ copy.minimumScans }}<input type="number" name="minScans" min="1" max="1000" step="1" [(ngModel)]="form.minScans" (ngModelChange)="dirty=true"></label>
+      </div>
+      <details class="nested-filters"><summary>{{ copy.namesAndPaths }}</summary><div class="filter-grid">
+        <label>{{ copy.nameMatch }}<select name="nameOperator" [(ngModel)]="form.nameOperator" (ngModelChange)="dirty=true">
+          <option value="CONTAINS">{{ copy.contains }}</option><option value="STARTS_WITH">{{ copy.startsWith }}</option><option value="ENDS_WITH">{{ copy.endsWith }}</option>
+          <option value="EXACT">{{ copy.exact }}</option><option value="GLOB">{{ copy.glob }}</option><option value="REGEX">{{ copy.regex }}</option>
+        </select></label>
+        <label class="wide">{{ copy.nameValue }}<input name="nameValue" [(ngModel)]="form.nameValue" (ngModelChange)="dirty=true"></label>
+        <label class="check"><input type="checkbox" name="caseSensitive" [(ngModel)]="form.caseSensitive" (ngModelChange)="dirty=true">{{ copy.caseSensitive }}</label>
+        <label>{{ copy.pathContains }}<input name="pathContains" [(ngModel)]="form.pathContains" (ngModelChange)="dirty=true"></label>
+        <label>{{ copy.pathStartsWith }}<input name="pathStartsWith" [(ngModel)]="form.pathStartsWith" (ngModelChange)="dirty=true"></label>
+        <label>{{ copy.pathUnder }}<input name="pathUnder" [(ngModel)]="form.pathUnder" (ngModelChange)="dirty=true"></label>
+        <label>{{ copy.extensions }}<input name="extensions" placeholder="txt, jpg" [(ngModel)]="form.extensions" (ngModelChange)="dirty=true"></label>
+        <label>{{ copy.errorFilter }}<select name="errorState" [(ngModel)]="form.errorState" (ngModelChange)="dirty=true">
+          <option value="ANY">{{ copy.any }}</option><option value="HAS">{{ copy.withErrors }}</option><option value="NONE">{{ copy.withoutErrors }}</option>
+        </select></label>
+        <label class="wide">{{ copy.excludeDirectories }}<textarea name="pathExcludes" rows="2" [(ngModel)]="form.pathExcludes" (ngModelChange)="dirty=true" [placeholder]="copy.onePathPerLine"></textarea></label>
+      </div></details>
+      <details class="nested-filters"><summary>{{ copy.size }} · {{ copy.modified }}</summary><div class="filter-grid">
+        <label>{{ copy.exactSize }}<input name="sizeExact" [(ngModel)]="form.sizeExact" (ngModelChange)="dirty=true"></label>
+        <label>{{ copy.minimumSize }}<input name="sizeMin" placeholder="10 MiB" [(ngModel)]="form.sizeMin" (ngModelChange)="dirty=true"></label>
+        <label>{{ copy.maximumSize }}<input name="sizeMax" placeholder="2 GiB" [(ngModel)]="form.sizeMax" (ngModelChange)="dirty=true"></label>
+        <label>{{ copy.modifiedAfter }}<input type="datetime-local" step="1" name="modifiedAfter" [(ngModel)]="form.modifiedAfter" (ngModelChange)="dirty=true"></label>
+        <label>{{ copy.modifiedBefore }}<input type="datetime-local" step="1" name="modifiedBefore" [(ngModel)]="form.modifiedBefore" (ngModelChange)="dirty=true"></label>
+      </div></details>
+    </details>
+
+    <details open class="rules-panel"><summary>{{ copy.rules }}</summary><p class="hint">{{ copy.ruleHint }}</p>
+      <label class="check"><input type="checkbox" name="manual" [(ngModel)]="form.manual" (ngModelChange)="dirty=true">{{ copy.manual }}</label>
+      @for (rule of rules; track rule; let i=$index) {
+        <div class="rule-row"><label>{{ copy.ruleType }}<select [name]="'ruleKind' + i" [(ngModel)]="rule.kind" (ngModelChange)="dirty=true">
+          @for (option of copy.ruleOptions; track option.value) { <option [value]="option.value">{{ option.label }}</option> }
+        </select></label>
+        @if (rule.kind === 'PREFER_SCAN' || rule.kind === 'PREFER_PATH') {
+          <label>{{ copy.preferredScan }}<select [name]="'ruleScan' + i" [(ngModel)]="rule.scanId" (ngModelChange)="dirty=true">
+            <option [ngValue]="undefined">{{ rule.kind === 'PREFER_PATH' ? copy.allSelected : copy.chooseScan }}</option>
+            @for (id of form.scanIds; track id) { <option [ngValue]="id">{{ scanLabel(id) }}</option> }
+          </select></label>
+        }
+        @if (rule.kind === 'PREFER_PATH') { <label>{{ copy.preferredPath }}<input [name]="'rulePath' + i" [(ngModel)]="rule.path" (ngModelChange)="dirty=true"></label> }
+        <div class="row-actions"><button type="button" class="secondary" (click)="moveRule(i,-1)" [disabled]="$first" [attr.aria-label]="copy.moveUp">↑</button>
+          <button type="button" class="secondary" (click)="moveRule(i,1)" [disabled]="$last" [attr.aria-label]="copy.moveDown">↓</button>
+          <button type="button" class="secondary" (click)="removeRule(i)">{{ copy.removeRule }}</button></div>
+        </div>
+      }
+      <button type="button" class="secondary" (click)="addRule()" [disabled]="rules.length >= 32">{{ copy.addRule }}</button>
+    </details>
+    <details open class="protections-panel"><summary>{{ copy.protections }}</summary><p class="hint">{{ copy.protectionHint }}</p>
+      @for (protection of protections; track protection; let i=$index) {
+        <div class="rule-row"><label>{{ copy.protectedScan }}<select [name]="'protectionScan' + i" [(ngModel)]="protection.scanId" (ngModelChange)="dirty=true">
+          <option [ngValue]="undefined">{{ copy.allSelected }}</option>@for (id of form.scanIds; track id) { <option [ngValue]="id">{{ scanLabel(id) }}</option> }
+        </select></label><label class="grow">{{ copy.protectedPath }}<input [name]="'protectionPath' + i" [(ngModel)]="protection.path" (ngModelChange)="dirty=true"></label>
+          <button type="button" class="secondary" (click)="removeProtection(i)">{{ copy.removeProtection }}</button></div>
+      }
+      <button type="button" class="secondary" (click)="addProtection()" [disabled]="protections.length >= 100">{{ copy.addProtection }}</button>
+    </details>
+    <details><summary>{{ copy.limits }}</summary><div class="editor-grid">
+      <label>{{ copy.maxOccurrences }}<input type="number" name="maxOccurrences" min="1" max="1000000" step="1" [(ngModel)]="form.maxOccurrences" (ngModelChange)="dirty=true"></label>
+      <label>{{ copy.maxSeconds }}<input type="number" name="maxSeconds" min="1" max="600" step="1" [(ngModel)]="form.maxSeconds" (ngModelChange)="dirty=true"></label>
+    </div></details>
+    <div class="search-actions"><button type="submit">{{ record() ? copy.saveChanges : copy.saveScenario }}</button>
+      @if (record()) { <button type="button" class="danger" (click)="delete()">{{ copy.deleteScenario }}</button> }</div>
+  </fieldset>
+</form>
+
+@if (record(); as item) {
+  @if (dirty) { <p class="coverage attention">{{ copy.unsaved }}</p> }
+  <div class="scenario-actions"><button type="button" (click)="generate()" [disabled]="busy() || dirty">{{ copy.generate }}</button>
+    <button type="button" class="secondary" (click)="validate()" [disabled]="busy() || dirty || item.stale || !item.generationId">{{ copy.validate }}</button>
+    <button type="button" class="secondary" (click)="resetOverrides()" [disabled]="busy() || dirty || !item.generationId">{{ copy.resetOverrides }}</button></div>
+  @if (!item.snapshot) { <p class="hint">{{ copy.notGenerated }}</p> }
+  @if (item.snapshot; as snapshot) {
+    <section class="snapshot" [attr.aria-label]="copy.snapshot">
+      <div class="section-heading"><h2>{{ copy.snapshot }}</h2><span class="hint">{{ item.generatedAt }}</span></div>
+      @if (item.stale) { <p class="coverage attention" role="status">{{ copy.stale }}</p> }
+      @else if (snapshot.validation.valid) { <p class="coverage" role="status">{{ copy.ready }}</p> }
+      @for (issue of snapshot.validation.errors; track issue.code) { <p class="message error" role="alert">{{ issue.message }} @if (issue.count) { ({{ issue.count }}) }</p> }
+      @for (issue of snapshot.validation.warnings; track issue.code) { <p class="coverage attention">{{ issue.message }} ({{ issue.count }})</p> }
+      <p class="coverage" [class.attention]="snapshot.coverage.unhashedFiles > 0 || snapshot.coverage.scanErrors > 0">
+        {{ snapshot.coverage.hashedFiles }} / {{ snapshot.coverage.files }} {{ copy.savedHashCoverage }}
+        · {{ copy.unhashedFiles }}: {{ snapshot.coverage.unhashedFiles }} · {{ copy.errors }}: {{ snapshot.coverage.scanErrors }}</p>
+      <p class="hint">{{ copy.historical }}</p>
+      <div class="scenario-metrics">
+        <div class="panel metric"><span>{{ copy.duplicateGroups }}</span><strong>{{ snapshot.summary.groups }}</strong></div>
+        <div class="panel metric"><span>{{ copy.recordedPaths }}</span><strong>{{ snapshot.summary.recordedPaths }}</strong></div>
+        <div class="panel metric"><span>{{ copy.retained }}</span><strong>{{ snapshot.summary.keep }}</strong></div>
+        <div class="panel metric"><span>{{ copy.removals }}</span><strong>{{ snapshot.summary.remove }}</strong></div>
+        <div class="panel metric"><span>{{ copy.undecided }} / {{ copy.unresolved }}</span><strong>{{ snapshot.summary.undecided }} / {{ snapshot.summary.unresolved }}</strong></div>
+        <div class="panel metric"><span>{{ copy.candidateBytes }}</span><strong>{{ formatBytes(snapshot.summary.candidateBytes) }}</strong></div>
+      </div>
+      <section class="panel results-panel scenario-groups" [attr.aria-label]="copy.duplicateGroups">
+        <div class="table-wrap"><table><thead><tr><th>{{ copy.samplePath }}</th><th class="number">{{ copy.size }}</th>
+          <th class="number">{{ copy.duplicateOccurrences }}</th><th class="number">{{ copy.recordedPaths }}</th>
+          <th class="number">{{ copy.retained }}</th><th class="number">{{ copy.removals }}</th><th>{{ copy.actions }}</th></tr></thead>
+          <tbody>@for (group of groups()?.items ?? []; track group.groupId) {
+            <tr><td class="path-text">{{ group.samplePath }}</td><td class="number">{{ formatBytes(group.size) }}</td>
+              <td class="number">{{ group.occurrences }}</td><td class="number">{{ group.recordedPaths }}</td>
+              <td class="number">{{ group.keep }}</td><td class="number">{{ group.remove }}</td>
+              <td><button type="button" class="text-action" (click)="review(group)" [disabled]="busy()">{{ copy.review }}</button></td></tr>
+          } @empty { <tr><td colspan="7" class="empty">{{ copy.noDuplicateGroups }}</td></tr> }</tbody></table></div>
+        <div class="pagination"><button type="button" class="secondary" (click)="previousGroups()" [disabled]="groupLoading() || !canPreviousGroups()">{{ copy.previous }}</button>
+          <span>{{ groups()?.items?.length ?? 0 }} {{ copy.onPage }}</span><button type="button" class="secondary" (click)="nextGroups()" [disabled]="groupLoading() || !groups()?.page?.hasMore">{{ copy.next }}</button></div>
+      </section>
+    </section>
+  }
+}
+
+@if (selectedGroup(); as group) {
+  <section class="panel decision-panel" id="scenario-decisions" [attr.aria-label]="copy.decisions">
+    <div class="section-heading"><h2>{{ copy.decisions }} · {{ formatBytes(group.size) }}</h2><button type="button" class="secondary" (click)="closeGroup()">{{ copy.close }}</button></div>
+    <p class="hint">{{ copy.manualHint }}</p>
+    @if (decisionLoading()) { <p class="message" role="status">{{ copy.loading }}</p> }
+    <div class="table-wrap"><table><thead><tr><th>{{ copy.scanLabel }}</th><th>{{ copy.path }}</th><th>{{ copy.generatedChoice }}</th><th>{{ copy.choice }}</th><th>{{ copy.actions }}</th></tr></thead>
+      <tbody>@for (row of decisions()?.items ?? []; track row.scanId + ':' + row.entryId) {
+        <tr><td>{{ row.scanName }}</td><td class="path-text">{{ row.path }}</td><td><strong>{{ row.decision }}</strong><small>{{ reason(row.reason) }}</small></td>
+          <td><select [attr.aria-label]="copy.choice + ': ' + row.path" [ngModel]="row.manualDecision ?? 'AUTO'"
+            (ngModelChange)="override(row,$event)" [disabled]="!canEditDecisions()">
+            <option value="AUTO">{{ copy.automatic }}</option><option value="KEEP">{{ copy.retained }}</option>
+            <option value="REMOVE" [disabled]="!canRemove(row)">{{ copy.removals }}</option>
+            <option value="UNDECIDED" [disabled]="!canRemove(row)">{{ copy.undecided }}</option></select></td>
+          <td class="actions"><button type="button" class="text-action" (click)="entryOpen.emit(row)">{{ copy.details }}</button>
+            <button type="button" class="text-action" (click)="openDirectory(row)">{{ copy.containingDirectory }}</button></td></tr>
+      } @empty { @if (!decisionLoading()) { <tr><td colspan="5" class="empty">{{ copy.emptyDirectory }}</td></tr> } }</tbody>
+    </table></div>
+    <div class="pagination"><button type="button" class="secondary" (click)="previousDecisions()" [disabled]="decisionLoading() || !canPreviousDecisions()">{{ copy.previous }}</button>
+      <span>{{ decisions()?.items?.length ?? 0 }} / {{ group.occurrences }} {{ copy.duplicateOccurrences }}</span>
+      <button type="button" class="secondary" (click)="nextDecisions()" [disabled]="decisionLoading() || !decisions()?.page?.hasMore">{{ copy.next }}</button></div>
+  </section>
+}

@@ -134,6 +134,7 @@
       </select>
     </label>
     <button type="submit" [disabled]="loading()">{{ copy.searchFiles }}</button>
+    <button type="button" class="secondary" (click)="createScenario()" [disabled]="loading()">{{ copy.createScenario }}</button>
   </div>
 </form>
 
