@@ -1,6 +1,6 @@
 # Scenario Builder
 
-Scenarios are saved retention plans over historical filesystem inventory. They use complete persisted size and SHA-256 evidence from explicitly selected scans. They never read a source file, calculate a missing hash, change scanner data, or execute a KEEP/REMOVE decision. Archive members and disk-image guest entries are excluded. Export is a later milestone.
+Scenarios are saved retention plans over historical filesystem inventory. They use complete persisted size and SHA-256 evidence from explicitly selected scans. They never read a source file, calculate a missing hash, change scanner data, or execute a KEEP/REMOVE decision. Archive members and disk-image guest entries are excluded. Validated snapshots can be exported as [JSON, JSONL, and CSV cleanup manifests](SCENARIO_EXPORTS.md).
 
 ## Scope and definitions
 
@@ -28,6 +28,8 @@ Generate streams the selected evidence into the state database in one activated 
 Validation requires the current revision's snapshot. Every group containing REMOVE candidates must retain at least one confirmed regular-file candidate without conflicting history or recorded errors. Protected/out-of-scope/error removals, UNDECIDED choices, and overrides absent from the new scope/content block readiness. UNRESOLVED paths produce warnings and stay outside removals. Reset stale overrides after changing scope.
 
 Explicit validation recomputes the selected inventory fingerprint, including normalized scope, scan metadata, coverage, paths, identifiers, sizes, full modified timestamps, hashes, target flags, and recorded errors. Changed evidence makes the snapshot DRAFT and requires regeneration. The scanner lock prevents concurrent CLI writes during each read. READY means the saved plan passes these checks; `planningOnly` and `liveRevalidationRequired` remain true. Later execution would require fresh source checks.
+
+Export performs this validation again for an expected revision and rejects stale or invalid snapshots. Successful server delivery records EXPORTED and the last export ID, format, timestamp, byte count, record count, and SHA-256 in the snapshot. Revalidation preserves EXPORTED when the same snapshot remains valid. Edits/manual choices return to DRAFT; regeneration replaces the snapshot and returns READY or DRAFT. EXPORTED does not mean a client saved the file, live paths were checked, or cleanup occurred.
 
 Statistics count full observations and distinct recorded paths. Byte totals are exact decimal strings. `observedBytes` counts historical observations; `candidateBytes` sums distinct recorded removal paths within content groups. Neither measures reclaimable physical storage. Conflicting historical paths may appear in multiple content groups; state-category counts can overlap for such paths.
 

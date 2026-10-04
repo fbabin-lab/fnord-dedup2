@@ -141,6 +141,8 @@ export interface ScenarioSummary {
 }
 export interface ScenarioIssue { code: string; message: string; count?: number; }
 export interface ScenarioSnapshot {
+  lastExport?: { exportId: string; format: string; exportedAt: string; revision: string;
+    generationId: string; bytes: string; sha256: string; recordCount: string };
   generationId: string; algorithmVersion: string; sourceFingerprint: string; configFingerprint: string;
   sourceChanged: boolean; planningOnly: boolean; liveRevalidationRequired: boolean;
   coverage: DuplicatePage['coverage']; summary: ScenarioSummary;

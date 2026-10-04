@@ -1,6 +1,61 @@
 /** Scenario checks reuse the Duplicate Explorer's generated, disposable inventory. */
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import fs from 'node:fs';
+import { createHash } from 'node:crypto';
+
+function csvRows(text) {
+  const rows = []; let row = [], cell = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const value = text[i];
+    if (value === '"') {
+      if (quoted && text[i + 1] === '"') { cell += '"'; i++; } else quoted = !quoted;
+    } else if (!quoted && value === ',') { row.push(cell); cell = ''; }
+    else if (!quoted && value === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+    else if (!quoted && value === '\r') { /* CRLF separator */ }
+    else cell += value;
+  }
+  assert(!quoted && row.length === 0 && cell === '');
+  return rows;
+}
+
+function manifest(text, format) {
+  if (format === 'JSON') return JSON.parse(text);
+  if (format === 'JSONL') {
+    const lines = text.trimEnd().split('\n'); const records = lines.map(line => JSON.parse(line));
+    const completion = records.at(-1);
+    assert.equal(completion.recordsSha256, createHash('sha256').update(lines.slice(1, -1).join('\n') + '\n').digest('hex'));
+    return { metadata: records[0], items: records.slice(1, -1), completion };
+  }
+  const cells = csvRows(text), rows = cells.slice(1).map(row => Object.fromEntries(cells[0].map((key, i) => [key, row[i]])));
+  assert.equal(rows[0].record_type, 'manifest'); assert.equal(rows.at(-1).record_type, 'completion');
+  return { metadata: JSON.parse(rows[0].manifest_json), completion: JSON.parse(rows.at(-1).manifest_json),
+    items: rows.slice(1, -1).map(row => ({ decision: row.decision, requires_revalidation: row.requires_revalidation === 'true',
+      reference: { path: JSON.parse(row.path_json) }, keepReference: row.keep_reference_json ? JSON.parse(row.keep_reference_json) : null })) };
+}
+
+async function checkExport(base, target, revision, format, expectedRecords, expectedRemovals) {
+  const response = await fetch(base + target + '/export', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ revision, format }) });
+  assert.equal(response.status, 200);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  assert.equal(Number(response.headers.get('content-length')), bytes.length);
+  assert.equal(response.headers.get('x-manifest-sha256'), createHash('sha256').update(bytes).digest('hex'));
+  assert.equal(response.headers.get('x-scenario-revision'), String(revision));
+  assert.match(response.headers.get('content-disposition'), new RegExp(`attachment; filename="scenario-.*-r${revision}\\.${format.toLowerCase()}"`));
+  assert.equal(response.headers.get('cache-control'), 'no-store'); assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+  assert(response.headers.get('content-type').startsWith({ JSON: 'application/json', JSONL: 'application/x-ndjson', CSV: 'text/csv' }[format]));
+  const result = manifest(bytes.toString('utf8'), format);
+  assert(result.completion.complete && result.metadata.planningOnly && result.metadata.requires_revalidation);
+  assert.equal(result.metadata.exportId, response.headers.get('x-export-id'));
+  assert.equal(result.completion.recordCount, String(expectedRecords));
+  assert.equal(result.completion.removalCandidates, String(expectedRemovals));
+  assert.equal(result.items.length, expectedRecords);
+  assert(result.items.every(item => item.requires_revalidation));
+  assert(result.items.filter(item => item.decision === 'REMOVE').every(item => item.keepReference?.reference.path !== item.reference.path));
+  assert.equal((await api(base, target)).body.status, 'EXPORTED');
+  return result;
+}
 
 async function api(base, endpoint, method = 'GET', body) {
   const response = await fetch(base + endpoint, { method,
@@ -14,6 +69,7 @@ export async function checkScenarioHttp(base) {
   const created = await api(base, endpoint, 'POST', { name: 'HTTP scoped plan', config: { request } });
   assert.equal(created.status, 201); assert.equal(created.body.status, 'DRAFT');
   const target = endpoint + '/' + created.body.id;
+  assert.equal((await api(base, target + '/export', 'POST', { revision: 1, format: 'JSON' })).body.code, 'SCENARIO_NOT_GENERATED');
   assert((await api(base, endpoint)).body.items.some(x => x.id === created.body.id));
   const generated = await api(base, target + '/generate', 'POST', { revision: 1 });
   assert.equal(generated.status, 200); assert.equal(generated.body.status, 'READY');
@@ -21,6 +77,15 @@ export async function checkScenarioHttp(base) {
   assert.equal(generated.body.snapshot.summary.remove, '1');
   assert.equal(generated.body.snapshot.summary.candidateBytes, '14');
   assert(generated.body.snapshot.planningOnly && generated.body.snapshot.liveRevalidationRequired);
+  const exported = [];
+  for (const format of ['JSON', 'JSONL', 'CSV']) exported.push(await checkExport(base, target, 1, format, 114, 1));
+  assert.equal(new Set(exported.map(result => result.completion.recordsSha256)).size, 1);
+  const cap = await fetch(base + target + '/export', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ revision: 1, format: 'JSON', maxBytes: 1 }) });
+  assert.equal(cap.status, 409); assert.equal(cap.headers.get('content-disposition'), null);
+  assert.equal((await cap.json()).code, 'SCENARIO_EXPORT_LIMIT_EXCEEDED');
+  assert.equal((await api(base, target + '/export', 'POST', { revision: 1, format: 'PATHS' })).status, 400);
+  assert.equal((await api(base, target + '/export', 'POST', { format: 'JSON' })).status, 400);
   const group = (await api(base, target + '/groups')).body.items[0];
   const decisions = target + '/groups/' + encodeURIComponent(group.groupId) + '/decisions';
   const first = await api(base, decisions + '?limit=100');
@@ -38,6 +103,7 @@ export async function checkScenarioHttp(base) {
   assert.equal((await api(base, decisions + '?limit=100&cursor=' + encodeURIComponent(first.body.page.nextCursor))).status, 400);
   assert.equal((await api(base, target + '/generate', 'POST', { revision: 1 })).status, 409);
   assert.equal((await api(base, target + '/validate', 'POST', { revision: 2 })).status, 409);
+  assert.equal((await api(base, target + '/export', 'POST', { revision: 2, format: 'CSV' })).body.code, 'STALE_SCENARIO');
   const regenerated = await api(base, target + '/generate', 'POST', { revision: 2 });
   assert.equal(regenerated.body.status, 'READY'); assert.equal(regenerated.body.snapshot.summary.remove, '0');
   assert.equal((await api(base, target + '/validate', 'POST', { revision: 2 })).body.status, 'READY');
@@ -60,6 +126,7 @@ export async function checkScenarioHttp(base) {
   const unsafe = await api(base, scopedTarget + '/generate', 'POST', { revision: 2 });
   assert.equal(unsafe.body.status, 'DRAFT');
   assert.equal(unsafe.body.snapshot.validation.errors[0].code, 'NO_RETAINED_CANDIDATE');
+  assert.equal((await api(base, scopedTarget + '/export', 'POST', { revision: 2, format: 'JSONL' })).body.code, 'SCENARIO_NOT_READY');
 
   const capped = await api(base, endpoint, 'POST', { name: 'HTTP capped plan', config: { request, maxOccurrences: 2 } });
   const cappedTarget = endpoint + '/' + capped.body.id;
@@ -72,7 +139,7 @@ export async function checkScenarioHttp(base) {
   assert.equal((await api(base, cappedTarget + '?revision=1', 'DELETE')).status, 204);
   assert.equal((await api(base, '/api/v1/saved-searches', 'POST', { name: 'HTTP shared search',
     request: { name: { value: 'shared', operator: 'CONTAINS' } } })).status, 201);
-  console.log('PASS: scenario HTTP CRUD, explicit scope, full groups with restricted targets, protections, revisions, both pages, last keeper validation, and atomic caps');
+  console.log('PASS: scenario HTTP CRUD, scope, protections, revisions, pages, last keeper validation, JSON/JSONL/CSV exports, checksums, status, and atomic limits');
 }
 
 export async function checkScenarioBrowser(page, base, output) {
@@ -100,6 +167,7 @@ export async function checkScenarioBrowser(page, base, output) {
   const created = await click(page.getByRole('button', { name: 'Save scenario', exact: true }), '/api/v1/scenarios', 201);
   await page.waitForURL(new RegExp('#/scenarios/' + created.id + '$'));
   await ready('DRAFT', 1);
+  assert(await page.getByRole('button', { name: 'Export manifest', exact: true }).count() === 0);
   const target = '/api/v1/scenarios/' + created.id;
   assert.equal(generationRequests, 0, 'saving a definition does not generate decisions');
   const first = await click(page.getByRole('button', { name: 'Generate decisions', exact: true }), target + '/generate');
@@ -138,6 +206,7 @@ export async function checkScenarioBrowser(page, base, output) {
   await choose(newKeeper, 'REMOVE', 6);
   const unsafe = await click(page.getByRole('button', { name: 'Generate decisions', exact: true }), target + '/generate');
   assert.equal(unsafe.status, 'DRAFT'); assert.equal(unsafe.snapshot.validation.errors[0].code, 'NO_RETAINED_CANDIDATE');
+  assert(await page.getByRole('button', { name: 'Export manifest', exact: true }).isDisabled());
   await page.getByRole('alert').filter({ hasText: 'Every group with removal candidates must retain' }).waitFor();
   await click(page.getByRole('button', { name: 'Reset manual choices', exact: true }), target + '/overrides/reset');
   await ready('DRAFT', 7);
@@ -157,6 +226,25 @@ export async function checkScenarioBrowser(page, base, output) {
   await page.getByRole('button', { name: 'Review decisions', exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll('#scenario-decisions tbody tr').length === 2);
   assert.equal(await newKeeper.locator('td').nth(2).locator('strong').textContent(), 'KEEP');
+  for (const format of ['JSONL', 'JSON', 'CSV']) {
+    await page.getByLabel('Export format', { exact: true }).selectOption(format);
+    const pending = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export manifest', exact: true }).click();
+    const download = await pending;
+    assert.equal(download.suggestedFilename(), `scenario-${created.id}-r8.${format.toLowerCase()}`);
+    const saved = path.join(output, `browser-manifest.${format.toLowerCase()}`);
+    await download.saveAs(saved); assert.equal(await download.failure(), null);
+    const result = manifest(fs.readFileSync(saved, 'utf8'), format);
+    assert.equal(result.metadata.scenario.revision, '8'); assert.equal(result.completion.recordCount, '2');
+    assert.equal(result.completion.removalCandidates, '1');
+    await ready('EXPORTED', 8);
+    await page.getByText('Manifest downloaded.', { exact: true }).waitFor();
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Export manifest' && !button.disabled));
+  }
+  await page.reload(); await ready('EXPORTED', 8);
+  await page.getByText(/^Last export: CSV/).waitFor();
+  await page.getByRole('button', { name: 'Review decisions', exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll('#scenario-decisions tbody tr').length === 2);
   await page.screenshot({ path: path.join(output, 'scenarios-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: path.join(output, 'scenarios-mobile.png'), fullPage: true });
@@ -189,5 +277,5 @@ export async function checkScenarioBrowser(page, base, output) {
   await ready('DRAFT', 1);
   await click(page.getByRole('button', { name: 'Generate decisions', exact: true }), '/api/v1/scenarios/' + seeded.id + '/generate');
   await ready('READY', 1);
-  console.log('PASS: browser scenario save/generate/reload, accumulated manual choices, last keeper validation, ordered rules, directory/saved search scope, and mobile layout');
+  console.log('PASS: browser scenario workflow, JSON/JSONL/CSV downloads, exported reload, manual guards, directory/saved search scope, and mobile layout');
 }

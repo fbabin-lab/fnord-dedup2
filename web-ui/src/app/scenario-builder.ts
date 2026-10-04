@@ -36,6 +36,7 @@ export class ScenarioBuilderComponent implements OnInit, OnChanges, OnDestroy {
   private scanFilter = '';
   private readonly scanNames = new Map<number, string>();
   private scope: DuplicateRequest = { scanIds: [] };
+  private downloadEpoch = 0;
   readonly initialId = input<string | null>(null);
   readonly seed = input<DuplicateRequest | null>(null);
   readonly scenarioOpen = output<string | null>();
@@ -59,6 +60,8 @@ export class ScenarioBuilderComponent implements OnInit, OnChanges, OnDestroy {
   readonly listLoading = signal(false);
   readonly directoryLabel = signal('');
   readonly referenceLabel = signal('');
+  readonly downloadNotice = signal('');
+  exportFormat: 'JSON' | 'JSONL' | 'CSV' = 'JSONL';
   form = scenarioForm();
   rules: RetentionRule[] = [{ kind: 'SHALLOWEST' }];
   protections: ProtectedPath[] = [];
@@ -73,8 +76,9 @@ export class ScenarioBuilderComponent implements OnInit, OnChanges, OnDestroy {
     }));
   }
   ngOnChanges(): void {
+    this.downloadEpoch++;
     this.recordRequest?.unsubscribe(); this.groupRequest?.unsubscribe(); this.decisionRequest?.unsubscribe();
-    this.busy.set(false); this.problem.set(null); this.clearSnapshot();
+    this.busy.set(false); this.problem.set(null); this.downloadNotice.set(''); this.clearSnapshot();
     const id = this.initialId();
     if (id) {
       this.loading.set(true); this.record.set(null);
@@ -85,6 +89,7 @@ export class ScenarioBuilderComponent implements OnInit, OnChanges, OnDestroy {
     } else this.startForm(this.seed() ?? { scanIds: [] });
   }
   ngOnDestroy(): void {
+    this.downloadEpoch++;
     this.recordRequest?.unsubscribe(); this.listRequest?.unsubscribe(); this.scanRequest?.unsubscribe();
     this.groupRequest?.unsubscribe(); this.decisionRequest?.unsubscribe(); this.subscriptions.unsubscribe();
     this.labelRequests.unsubscribe();
@@ -107,6 +112,45 @@ export class ScenarioBuilderComponent implements OnInit, OnChanges, OnDestroy {
   generate(): void { this.action('generate'); }
   validate(): void { this.action('validate'); }
   resetOverrides(): void { this.action('overrides/reset'); }
+  canExport(): boolean {
+    const current = this.record();
+    return !!current?.snapshot?.validation.valid && !current.stale && !this.dirty && !this.busy() && !this.loading();
+  }
+  exportManifest(): void {
+    const current = this.record(); if (!current || !this.canExport()) return;
+    this.busy.set(true); this.problem.set(null); this.downloadNotice.set(''); this.recordRequest?.unsubscribe();
+    const epoch = ++this.downloadEpoch;
+    const format = this.exportFormat;
+    this.recordRequest = this.api.exportScenario(current.id, current.revision, format).subscribe({
+      next: response => {
+        if (response.body) {
+          const url = URL.createObjectURL(response.body);
+          const anchor = document.createElement('a');
+          anchor.href = url; anchor.download = `scenario-${current.id}-r${current.revision}.${format.toLowerCase()}`;
+          document.body.appendChild(anchor); anchor.click(); anchor.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          this.downloadNotice.set(this.copy.exportDownloaded);
+        }
+        this.recordRequest = this.api.scenario(current.id).subscribe({
+          next: item => { this.busy.set(false); this.record.set(item); this.loadList(null); },
+          error: error => { this.busy.set(false); this.fail(error); }
+        });
+      },
+      error: async (error: HttpErrorResponse) => {
+        // Download error bodies use JSON, even though the successful response is a Blob.
+        let body: Partial<ApiError> | null = error.error;
+        if (error.error instanceof Blob) {
+          try { body = JSON.parse(await error.error.text()) as ApiError; } catch { body = null; }
+        }
+        if (this.downloadEpoch !== epoch || this.record()?.id !== current.id) return;
+        this.busy.set(false);
+        this.problem.set({ code: body?.code ?? 'REQUEST_FAILED', message: body?.message ?? this.copy.failed });
+        this.recordRequest = this.api.scenario(current.id).subscribe({
+          next: item => { this.record.set(item); this.loadList(null); }, error: failure => this.fail(failure)
+        });
+      }
+    });
+  }
   delete(): void {
     const current = this.record(); if (!current) return;
     this.busy.set(true); this.problem.set(null);
@@ -214,7 +258,7 @@ export class ScenarioBuilderComponent implements OnInit, OnChanges, OnDestroy {
       maxOccurrences: this.form.maxOccurrences, maxSeconds: this.form.maxSeconds };
   }
   private startForm(request: DuplicateRequest): void {
-    this.record.set(null); this.clearSnapshot(); this.scope = structuredClone(request); this.form = scenarioForm(request);
+    this.record.set(null); this.downloadNotice.set(''); this.clearSnapshot(); this.scope = structuredClone(request); this.form = scenarioForm(request);
     this.rules = [{ kind: 'SHALLOWEST' }]; this.protections = []; this.dirty = true;
     this.loading.set(false); this.problem.set(null); this.loadScopeLabels();
   }

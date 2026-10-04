@@ -78,6 +78,10 @@ export class InventoryApi {
   scenarioAction(id: string, action: 'generate' | 'validate' | 'overrides/reset', revision: number) {
     return this.http.post<Scenario>('/api/v1/scenarios/' + encodeURIComponent(id) + '/' + action, { revision });
   }
+  exportScenario(id: string, revision: number, format: 'JSON' | 'JSONL' | 'CSV') {
+    return this.http.post('/api/v1/scenarios/' + encodeURIComponent(id) + '/export', { revision, format },
+      { responseType: 'blob', observe: 'response' });
+  }
   scenarioOverride(id: string, revision: number, scanId: number, entryId: number, decision: string) {
     return this.http.post<Scenario>('/api/v1/scenarios/' + encodeURIComponent(id) + '/overrides',
       { revision, decisions: [{ scanId, entryId, decision }] });
