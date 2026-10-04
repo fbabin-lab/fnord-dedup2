@@ -83,6 +83,8 @@ class ScenarioExportTest {
         // Stored names are metadata on both platforms; this test never creates a Windows-invalid filename.
         String name = '=SUM(1,1)"\\back\nété\t.txt'
         DriverManager.getConnection('jdbc:duckdb:' + f.database).withCloseable { c ->
+            // These are POSIX names in a copied/offline inventory, including when this test runs on Windows.
+            c.createStatement().withCloseable { it.execute("UPDATE scans SET root='/offline/inventory-A' WHERE scan_id=1") }
             c.prepareStatement("UPDATE entries SET filename=?,relative_path=? WHERE filename='remove.txt'").withCloseable { s ->
                 s.setString(1, name); s.setString(2, name); s.executeUpdate()
             }
