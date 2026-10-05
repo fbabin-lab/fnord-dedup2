@@ -69,6 +69,17 @@ distributions {
 tasks.register('testHarness', Sync) {
     into layout.buildDirectory.dir('test-harness')
     from('src') { into 'src' }
-    from('scripts') { into 'scripts' }
+    from('scripts') { into 'scripts'; exclude '**/__pycache__/**' }
     from(configurations.testRuntimeClasspath) { into 'lib' }
+    from('AGENTS.md', 'README.md', 'REQUIREMENTS.md', 'LICENSE',
+         'build.gradle', 'settings.gradle', 'gradlew', 'gradlew.bat')
+    from('docs') { into 'docs' }
+    from('examples') { into 'examples' }
+    from('web-api/src') { into 'web-api/src' }
+    from('web-api/build.gradle') { into 'web-api' }
+    from({ project(':web-api').configurations.testRuntimeClasspath }) { into 'web-lib' }
+    from('web-ui') {
+        into 'web-ui'
+        include 'src/**', 'public/**', 'scripts/**', '*.json', '*.js', '*.mjs'
+    }
 }
