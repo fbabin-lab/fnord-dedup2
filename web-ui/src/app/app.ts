@@ -1,6 +1,10 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Observable, Subscription, forkJoin } from 'rxjs';
+import { ArchiveBrowserComponent } from './archive-browser';
+import { FileArchiveMatchesComponent } from './file-archive-matches';
+import { ArchiveSummaryComponent } from './archive-summary';
+import { ArchiveRoute, archiveHref } from './archive.models';
 import { copy } from './copy';
 import { DirectoryTreeComponent } from './directory-tree';
 import { FileSearchComponent } from './file-search';
@@ -15,13 +19,13 @@ import {
   Registration, Scan, ScanError, ScanFilters
 } from './inventory.models';
 
-type View = 'dashboard' | 'scans' | 'scan' | 'explorer' | 'search' | 'duplicates' | 'scenarios' | 'signatures' | 'errors';
+type View = 'dashboard' | 'scans' | 'scan' | 'explorer' | 'search' | 'duplicates' | 'scenarios' | 'signatures' | 'errors' | 'archive';
 
 @Component({
   selector: 'app-root',
   standalone: true,
   imports: [DirectoryTreeComponent, FileSearchComponent, DuplicateExplorerComponent, ScenarioBuilderComponent,
-    CandidateBadgesComponent, CandidateLegendComponent, SignatureEditorComponent, SignatureStoreComponent],
+    CandidateBadgesComponent, CandidateLegendComponent, SignatureEditorComponent, SignatureStoreComponent, ArchiveBrowserComponent, ArchiveSummaryComponent, FileArchiveMatchesComponent],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
@@ -41,6 +45,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private errorHistory: (string | null)[] = [];
 
   readonly copy = copy;
+  readonly archiveRoute = signal<ArchiveRoute | null>(null);
   readonly view = signal<View>('dashboard');
   readonly scanId = signal<number | null>(null);
   readonly directoryId = signal(1);
@@ -131,6 +136,13 @@ export class AppComponent implements OnInit, OnDestroy {
     if (target) this.navigate('/scans/' + target + '/errors');
     else this.navigate('/scans');
   }
+  openArchive(entry: Entry): void {
+    const id = entry.scanId ?? this.scanId();
+    if (id && entry.archive) this.navigate(archiveHref({ scanId: id, rootEntryId: entry.archive.rootEntryId, chain: '' }).slice(1));
+  }
+  exploreEntry(entry: Entry): void {
+    if (entry.archive?.browsable) this.openArchive(entry); else this.openEntry(entry);
+  }
   openEntry(entry: Entry): void {
     const scanId = entry.scanId ?? this.scanId();
     if (entry.kind === 'DIRECTORY') {
@@ -214,6 +226,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
   formatDate(value: string): string { return new Date(value).toLocaleString(); }
   formatModified(entry: Entry): string {
+    if (entry.modifiedSec == null || entry.modifiedNano == null) return 'Unknown';
     return new Date(entry.modifiedSec * 1000 + Math.floor(entry.modifiedNano / 1_000_000)).toLocaleString();
   }
   formatErrorDate(value: number): string { return new Date(value).toLocaleString(); }
@@ -222,13 +235,23 @@ export class AppComponent implements OnInit, OnDestroy {
     const path = window.location.hash.slice(1) || '/dashboard';
     if (path === this.routeKey) return;
     this.routeKey = path;
-    const parts = path.split('/').filter(Boolean);
+    const question = path.indexOf('?');
+    const routePath = question < 0 ? path : path.slice(0, question);
+    const params = new URLSearchParams(question < 0 ? '' : path.slice(question + 1));
+    const parts = routePath.split('/').filter(Boolean);
+    this.archiveRoute.set(null);
     const id = Number(parts[1]), entryId = Number(parts[3]), searchEntryId = Number(parts[2]);
     this.searchDirectoryId.set(null);
     this.duplicateEntryId.set(null);
     this.scenarioId.set(null);
     this.signatureEntry.set(null);
-    if (parts[0] === 'signatures' && parts.length === 1) {
+    if (parts[0] === 'scans' && Number.isSafeInteger(id) && id > 0 && parts[2] === 'archive' &&
+        parts.length === 4 && Number.isSafeInteger(entryId) && entryId > 0) {
+      this.view.set('archive'); this.scanId.set(id);
+      const ordinal = Number(params.get('member'));
+      this.archiveRoute.set({ scanId: id, rootEntryId: entryId, chain: params.get('chain') || '', path: params.get('path') || '',
+        ...(Number.isSafeInteger(ordinal) && ordinal > 0 ? { ordinal } : {}) });
+    } else if (parts[0] === 'signatures' && parts.length === 1) {
       this.view.set('signatures'); this.scanId.set(null);
     } else if (parts[0] === 'scans' && parts.length === 1) {
       this.view.set('scans'); this.scanId.set(null);
@@ -279,7 +302,7 @@ export class AppComponent implements OnInit, OnDestroy {
         recent: this.api.scans(null, { name: '', phase: '', hasErrors: '' }, 10)
       }), result => { this.dashboard.set(result.metrics); this.scans.set(result.recent); });
     } else if (this.view() === 'scans') this.loadScanPage();
-    else if (this.view() === 'search' || this.view() === 'duplicates' || this.view() === 'scenarios' || this.view() === 'signatures') this.loading.set(false);
+    else if (this.view() === 'archive' || this.view() === 'search' || this.view() === 'duplicates' || this.view() === 'scenarios' || this.view() === 'signatures') this.loading.set(false);
     else {
       const id = this.scanId();
       if (!id) return;

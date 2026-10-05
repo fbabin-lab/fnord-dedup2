@@ -1,0 +1,30 @@
+:host { display:block; min-width:0; }
+.archive-panel { margin:20px 0; padding:24px; background:white; border:1px solid #dce5e8; border-radius:12px; }
+.archive-panel h2 { font-size:18px; margin:0 0 14px; }
+.archive-panel h3 { font-size:14px; margin:22px 0 10px; }
+.archive-panel p { font-size:13px; line-height:1.6; }
+a, .text-action { color:#126d68; overflow-wrap:anywhere; }
+button { font:inherit; cursor:pointer; border:1px solid #bcd7d0; border-radius:6px; padding:8px 12px; color:#155f59; background:white; }
+button:disabled { opacity:.5; cursor:default; }
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible { outline:3px solid #65cbb5; outline-offset:2px; }
+button.text-action { padding:0; border:0; background:none; text-align:left; font-weight:600; }
+.archive-controls,.archive-breadcrumbs,.archive-pagination { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:16px 0; }
+.archive-controls label { display:grid; gap:5px; font-size:12px; }
+input,select { font:inherit; padding:7px; border:1px solid #cfdcdf; border-radius:5px; max-width:100%; }
+.archive-table { overflow:auto; }
+table { width:100%; border-collapse:collapse; font-size:12px; }
+th,td { text-align:left; vertical-align:top; padding:12px; border-bottom:1px solid #e7edef; }
+th { background:#f5f8f8; color:#496674; font-size:11px; }
+.path-text,.hash-text { white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; }
+.archive-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.archive-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.archive-metric { padding:18px; border:1px solid #dce5e8; border-radius:8px; }
+.archive-metric strong { display:block; font-size:24px; margin:10px 0; }
+.archive-metric span { display:block; font-size:13px; }
+.archive-note { padding:12px; border-left:4px solid #667ba3; background:#f1f4fa; color:#2c4363; }
+.archive-error { padding:14px; background:#fff0f1; color:#85202e; border:1px solid #eda1ac; }
+.archive-status { font-size:11px; padding:4px 6px; border-radius:5px; background:#e9f2ef; display:inline-block; }
+dl { display:grid; grid-template-columns:minmax(110px,160px) minmax(0,1fr); gap:12px; font-size:13px; }
+dt { color:#607780; } dd { margin:0; overflow-wrap:anywhere; }
+.archive-pagination { justify-content:flex-end; font-size:12px; }
+@media(max-width:720px) { .archive-panel { padding:16px; } .archive-metrics { grid-template-columns:1fr; } dl { grid-template-columns:1fr; gap:6px; } dd { margin-bottom:10px; } .archive-controls { align-items:stretch; } }

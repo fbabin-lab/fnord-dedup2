@@ -1,6 +1,8 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Subject } from 'rxjs';
+import { ArchiveLocation } from './inventory.models';
+import { ArchivePage, ArchiveEntry, ArchiveGroupPage, ArchiveSummary, ArchiveOccurrence } from './archive.models';
 import {
   Breadcrumb, ChildPage, Dashboard, DatabaseStatus, DuplicateOccurrencePage,
   DuplicatePage, DuplicateRequest, Entry, FileSearchPage,
@@ -30,6 +32,42 @@ export class InventoryApi {
     let params = new HttpParams().set('limit', limit);
     if (cursor) params = params.set('cursor', cursor);
     return this.http.get<SignatureMatches>('/api/v1/signatures/' + encodeURIComponent(id) + '/matches', { params });
+  }
+
+  archiveSummary(scanId?: number | null) {
+    return this.http.get<ArchiveSummary>(scanId ? '/api/v1/scans/' + scanId + '/archives/summary' : '/api/v1/archives/summary');
+  }
+  private archiveEndpoint(location: ArchiveLocation) {
+    return '/api/v1/scans/' + location.scanId + '/entries/' + location.rootEntryId + '/archive';
+  }
+  archiveChildren(location: ArchiveLocation, path: string, search: string, cursor: string | null, limit = 100) {
+    let params = new HttpParams().set('chain', location.chain).set('path', path).set('search', search).set('limit', limit);
+    if (cursor) params = params.set('cursor', cursor);
+    return this.http.get<ArchivePage>(this.archiveEndpoint(location), { params });
+  }
+  archiveMember(location: ArchiveLocation) {
+    return this.http.get<ArchiveEntry>(this.archiveEndpoint(location) + '/members/' + location.ordinal,
+      { params: new HttpParams().set('chain', location.chain) });
+  }
+  archiveMemberOccurrences(location: ArchiveLocation, storageKind: string, cursor: string | null) {
+    let params = new HttpParams().set('chain', location.chain).set('storageKind', storageKind).set('limit', 100);
+    if (cursor) params = params.set('cursor', cursor);
+    return this.http.get<Page<ArchiveOccurrence>>(this.archiveEndpoint(location) + '/members/' + location.ordinal + '/occurrences', { params });
+  }
+  saveArchiveSignature(location: ArchiveLocation, body: { tag: string; memo: string }) {
+    return this.http.post<Signature>(this.archiveEndpoint(location) + '/members/' + location.ordinal + '/signature', body,
+      { params: new HttpParams().set('chain', location.chain) });
+  }
+  fileArchiveOccurrences(scanId: number, entryId: number, cursor: string | null) {
+    let params = new HttpParams().set('limit', 100);
+    if (cursor) params = params.set('cursor', cursor);
+    return this.http.get<Page<ArchiveOccurrence>>('/api/v1/scans/' + scanId + '/entries/' + entryId + '/archive-occurrences', { params });
+  }
+  archiveGroups(scanIds: number[], cursor: string | null) {
+    return this.http.post<ArchiveGroupPage>('/api/v1/archives/duplicates', { scanIds, cursor, limit: 50 });
+  }
+  archiveOccurrences(scanIds: number[], size: string, sha256: string, storageKind: string, cursor: string | null) {
+    return this.http.post<Page<ArchiveOccurrence>>('/api/v1/archives/occurrences', { scanIds, size, sha256, storageKind, cursor, limit: 100 });
   }
 
   registration() { return this.http.get<Registration>('/api/v1/database'); }

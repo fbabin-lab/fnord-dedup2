@@ -1,0 +1,51 @@
+<section class="archive-panel" aria-label="Archive duplicate analysis">
+  <h2>Archive member duplicates — separate analysis</h2>
+  <p>Uses the last applied scan selection. Filename, directory, error, cross-scan-only and other filesystem filters above do not apply here.
+    Groups include file-to-archive and archive-to-archive matches within those scans.</p>
+  <button type="button" (click)="refresh()" [disabled]="loading()">Refresh archive analysis</button>
+  @if (loading()) { <p role="status">Calculating archive duplicate observations…</p> }
+  @if (problem()) { <p class="archive-error" role="alert">{{ problem() }}</p> }
+  @if (results(); as page) {
+    <app-archive-accounting [value]="page.summary" />
+    <h3>Groups with at least one archive member: {{ page.summary.archive.groups }}</h3>
+    <div class="archive-table"><table>
+      <thead><tr><th>Content size</th><th>Filesystem occurrences</th><th>Filesystem observed bytes</th><th>Archive members</th><th>Archive logical bytes</th><th>Actions</th></tr></thead>
+      <tbody>
+        @for (group of page.items; track group.groupId) {
+          <tr [class.signature-row]="group.signatureMatch" [class.duplicate-row]="group.duplicateCandidate">
+            <td>{{ formatBytes(group.size) }}<br><app-candidate-badges [value]="group" /></td>
+            <td>{{ group.filesystemOccurrences }}</td><td>{{ formatBytes(group.filesystemObservedBytes) }}</td>
+            <td>{{ group.archiveOccurrences }}</td><td>{{ formatBytes(group.archiveLogicalBytes) }}</td>
+            <td><button type="button" (click)="open(group)">Review archive group</button></td>
+          </tr>
+        } @empty { <tr><td colspan="6">No confirmed duplicate group involving recorded archive members in these scans.</td></tr> }
+      </tbody>
+    </table></div>
+    <div class="archive-pagination"><button type="button" (click)="previous()" [disabled]="loading() || !canPrevious()">Previous archive groups</button>
+      <span>{{ page.items.length }} groups on this page</span>
+      <button type="button" (click)="next()" [disabled]="loading() || !page.page.hasMore">Next archive groups</button></div>
+  }
+  @if (selected(); as group) {
+    <h3>Selected content group</h3><p class="hash-text">SHA-256: {{ group.sha256 }}</p>
+    <p>No retention or REMOVE decisions are generated from this archive analysis.</p>
+    <div class="archive-controls"><button type="button" (click)="findOccurrences('FILESYSTEM')">Filesystem occurrences ({{ group.filesystemOccurrences }})</button>
+      <button type="button" (click)="findOccurrences('ARCHIVE_MEMBER')">Archive occurrences ({{ group.archiveOccurrences }})</button>
+      <button type="button" (click)="close()">Close archive group</button></div>
+    @if (occurrenceLoading()) { <p role="status">Loading archive-group occurrences…</p> }
+    @if (occurrenceProblem()) { <p class="archive-error" role="alert">{{ occurrenceProblem() }}</p> }
+    @if (occurrences(); as found) {
+      <h3>{{ domain === 'ARCHIVE_MEMBER' ? 'Archive member occurrences' : 'Filesystem occurrences' }}</h3>
+      <div class="archive-table"><table><thead><tr><th>Scan</th><th>Location</th><th>Action</th></tr></thead><tbody>
+        @for (item of found.items; track item.scanId + ':' + item.locationId + ':' + item.chain + ':' + item.memberId) {
+          <tr [class.signature-row]="item.signatureMatch" [class.duplicate-row]="item.duplicateCandidate">
+            <td>{{ item.scanName }}</td><td class="path-text"><a [href]="occurrenceHref(item)">{{ item.path }}</a>
+              @if (item.ordinal) { <span> · member #{{ item.ordinal }}</span> }</td>
+            <td>@if (item.storageKind === 'FILESYSTEM') { <button type="button" (click)="entryOpen.emit(item)">File details</button> }
+              @else { <a [href]="occurrenceHref(item)">Browse member</a> }</td></tr>
+        } @empty { <tr><td colspan="3">No matching occurrence in this storage category.</td></tr> }
+      </tbody></table></div>
+      <div class="archive-pagination"><button type="button" (click)="previousOccurrences()" [disabled]="occurrenceLoading() || !canPreviousOccurrences()">Previous group occurrences</button>
+        <button type="button" (click)="nextOccurrences()" [disabled]="occurrenceLoading() || !found.page.hasMore">Next group occurrences</button></div>
+    }
+  }
+</section>

@@ -1,0 +1,114 @@
+<section class="archive-panel" aria-label="Scanned archive browser">
+  <div class="archive-controls"><button type="button" (click)="refresh()" [disabled]="loading()">Refresh archive</button>
+    <span>Recorded metadata only · no extraction or source-file access</span></div>
+  @if (loading()) { <p role="status">Loading scanned archive…</p> }
+  @if (problem()) { <p class="archive-error" role="alert">{{ problem() }}</p> }
+  @if (listing(); as page) {
+    <nav class="archive-breadcrumbs" aria-label="Archive breadcrumbs">
+      <a [href]="'#/scans/' + route().scanId + '/explore/' + page.archive.parentId">Containing folder</a><span>/</span>
+      @for (container of page.archive.containers; track container.chain) {
+        <a [href]="directoryHref('',container.chain)">{{ container.name }}</a><span>!/</span>
+      }
+      @for (part of pathCrumbs(); track part.path) {
+        <a [href]="directoryHref(part.path)">{{ part.name }}</a><span>/</span>
+      }
+    </nav>
+    <h2 class="path-text">{{ page.archive.filename }}</h2>
+    <p><span class="archive-status">{{ page.archive.status }}</span>
+      @if (page.archive.reused) { <span> · Shared scan result; this archive occurrence is counted separately.</span> }
+    </p>
+    <p class="path-text">Physical archive: {{ page.archive.physicalPath }}</p>
+    @if (page.archive.diagnostic) { <p class="archive-note">{{ page.archive.diagnostic }}</p> }
+    @if (page.archive.status !== 'COMPLETE') {
+      <p class="archive-note">This archive is {{ page.archive.status }}. Only finalized recorded members are shown;
+        missing or unreadable contents are not considered unique.</p>
+    }
+    <p class="archive-note">Archive member candidates require separate archive handling. They cannot be deleted like ordinary files
+      and never enter ordinary cleanup plans. Sizes below are logical, uncompressed bytes.</p>
+    <form class="archive-controls" (ngSubmit)="searchMembers()">
+      <label>Search this archive<input name="archiveSearch" [(ngModel)]="search" maxlength="256" placeholder="Internal path or filename"></label>
+      <label>Members per page<select name="archivePageSize" [(ngModel)]="pageSize"><option [ngValue]="25">25</option><option [ngValue]="100">100</option><option [ngValue]="500">500</option></select></label>
+      <button type="submit" [disabled]="loading()">Apply archive search</button>
+    </form>
+    <p>Search covers the current archive result under this folder; open a nested archive to search its contents.</p>
+    <app-candidate-legend />
+    <div class="archive-table"><table>
+      <thead><tr><th>Name / internal path</th><th>Type / integrity</th><th>Logical size</th><th>Modified</th><th>Candidate status</th><th>Actions</th></tr></thead>
+      <tbody>
+        @for (item of page.items; track item.key) {
+          <tr [class.signature-row]="item.signatureMatch" [class.duplicate-row]="item.duplicateCandidate">
+            <td class="path-text">
+              @if (item.kind === 'DIRECTORY') { <a [href]="directoryHref(item.relativePath)">▸ {{ item.filename }}</a> }
+              @else { <a [href]="memberHref(item)">{{ page.search ? (item.relativePath || item.filename) : item.filename }}</a><br><small>Member #{{ item.ordinal }}</small> }
+            </td>
+            <td>{{ item.kind }}<br>{{ item.integrity || 'Virtual folder' }}
+              @if (item.nestedArchive) { <br><span class="archive-status">Nested archive · {{ item.nestedArchive.status }}</span> }</td>
+            <td>{{ item.kind === 'FILE' ? (item.actualSize == null ? 'Unknown' : formatBytes(item.actualSize)) : '—' }}</td>
+            <td>{{ item.kind === 'DIRECTORY' ? '—' : modified(item) }}</td>
+            <td><app-candidate-badges [value]="item" />
+              @if (item.duplicateCandidate) { <div>Filesystem: {{ item.filesystemOccurrenceCount }} · archive: {{ item.archiveOccurrenceCount }}</div> }
+              @if (item.kind !== 'DIRECTORY') { <div>Archive member · no direct deletion</div> }</td>
+            <td><div class="archive-actions">
+              @if (item.nestedArchive) { <a [href]="nestedHref(item)">Browse nested archive</a> }
+              @if (item.kind === 'FILE' && item.sha256) {
+                <button type="button" class="text-action" (click)="signatureEntry.set(item)">{{ item.signatureMatch ? 'Edit signature' : 'Add signature' }}</button>
+              }
+            </div></td>
+          </tr>
+        } @empty { <tr><td colspan="6">No recorded members in this view. This does not prove the source archive is empty.</td></tr> }
+      </tbody>
+    </table></div>
+    <div class="archive-pagination"><button type="button" (click)="previous()" [disabled]="loading() || !canPrevious()">Previous members</button>
+      <span>{{ page.items.length }} on this page</span><button type="button" (click)="next()" [disabled]="loading() || !page.page.hasMore">Next members</button></div>
+  }
+</section>
+@if (detailLoading()) { <p role="status">Loading member details…</p> }
+@if (detailProblem()) { <p class="archive-error" role="alert">{{ detailProblem() }}</p> }
+@if (detail(); as item) {
+  <section class="archive-panel" aria-label="Archive member details">
+    <h2>Archive member details</h2>
+    <p class="path-text">{{ item.path }}</p><app-candidate-badges [value]="item" />
+    <p class="archive-note">Analysis-only archive member. Duplicate and signature matches are counted separately from directly removable files.</p>
+    <dl>
+      <dt>Member ordinal</dt><dd>{{ item.ordinal }}</dd>
+      <dt>Integrity</dt><dd>{{ item.integrity }}</dd>
+      <dt>Actual logical size</dt><dd>{{ item.actualSize == null ? 'Unknown' : formatBytes(item.actualSize) }}</dd>
+      <dt>Declared size</dt><dd>{{ item.declaredSize == null ? 'Unknown' : formatBytes(item.declaredSize) }}</dd>
+      <dt>Modified</dt><dd>{{ modified(item) }}</dd>
+      <dt>SHA-256</dt><dd class="hash-text">{{ item.sha256 || 'Unresolved — no complete saved hash' }}</dd>
+      <dt>Filesystem occurrences</dt><dd>{{ item.sha256 ? item.filesystemOccurrenceCount : 'Unknown' }}</dd>
+      <dt>Archive occurrences</dt><dd>{{ item.sha256 ? item.archiveOccurrenceCount : 'Unknown' }}</dd>
+    </dl>
+    @if (item.recoveredSha256) { <p class="hash-text">Recovered hash (excluded from confirmed duplicates): {{ item.recoveredSha256 }}</p> }
+    @if (item.diagnostic) { <p class="archive-note">{{ item.diagnostic }}</p> }
+    @if (item.relatedErrors?.length) { @for (issue of item.relatedErrors; track $index) { <p class="archive-note">{{ issue.message }}</p> } }
+    @if (item.signature; as signature) { <p>Signature tag: {{ signature.tag || '—' }}</p><p class="path-text">{{ signature.memo }}</p> }
+    @if (item.sha256) {
+      <p>Occurrence counts below include all recorded scans, including this member.</p>
+      <div class="archive-controls">
+        <button type="button" (click)="findOccurrences('FILESYSTEM')">Filesystem occurrences</button>
+        <button type="button" (click)="findOccurrences('ARCHIVE_MEMBER')">Archive occurrences</button>
+        <button type="button" (click)="signatureEntry.set(item)">{{ item.signatureMatch ? 'Edit signature' : 'Add signature' }}</button>
+      </div>
+    }
+    @if (occurrenceLoading()) { <p role="status">Loading occurrences…</p> }
+    @if (occurrenceProblem()) { <p class="archive-error" role="alert">{{ occurrenceProblem() }}</p> }
+    @if (occurrences(); as found) {
+      <h3>{{ domain === 'ARCHIVE_MEMBER' ? 'Archive member occurrences — separate handling required' : 'Filesystem occurrences' }}</h3>
+      <div class="archive-table"><table><thead><tr><th>Scan</th><th>Location</th><th>Logical size</th><th>Action</th></tr></thead><tbody>
+        @for (occurrence of found.items; track occurrence.scanId + ':' + occurrence.locationId + ':' + occurrence.chain + ':' + occurrence.memberId) {
+          <tr [class.signature-row]="occurrence.signatureMatch" [class.duplicate-row]="occurrence.duplicateCandidate">
+            <td>{{ occurrence.scanName }}</td><td class="path-text"><a [href]="occurrenceHref(occurrence)">{{ occurrence.path }}</a>
+              @if (occurrence.ordinal) { <span> · member #{{ occurrence.ordinal }}</span> }</td>
+            <td>{{ formatBytes(occurrence.size) }}</td><td>
+              @if (occurrence.storageKind === 'FILESYSTEM') { <button type="button" (click)="entryOpen.emit(occurrence)">File details</button> }
+              @else { <a [href]="occurrenceHref(occurrence)">Member details</a> }
+            </td></tr>
+        } @empty { <tr><td colspan="4">No confirmed occurrences in this storage category.</td></tr> }
+      </tbody></table></div>
+      <div class="archive-pagination"><button type="button" (click)="previousOccurrences()" [disabled]="occurrenceLoading() || !canPreviousOccurrences()">Previous occurrences</button>
+        <button type="button" (click)="nextOccurrences()" [disabled]="occurrenceLoading() || !found.page.hasMore">Next occurrences</button></div>
+    }
+  </section>
+}
+@if (signatureEntry(); as item) { <app-signature-editor [entry]="item" (closed)="signatureEntry.set(null)" /> }

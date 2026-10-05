@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnChanges, OnDestroy, OnInit, inject, input, output, signal } from '@angular/core';
+import { ArchiveAnalysisComponent } from './archive-analysis';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { copy } from './copy';
@@ -14,7 +15,7 @@ import {
 @Component({
   selector: 'app-duplicate-explorer',
   standalone: true,
-  imports: [FormsModule, CandidateBadgesComponent, CandidateLegendComponent],
+  imports: [FormsModule, CandidateBadgesComponent, CandidateLegendComponent, ArchiveAnalysisComponent],
   templateUrl: './duplicate-explorer.html',
   styleUrls: ['./file-search.css', './duplicate-explorer.css']
 })
@@ -34,6 +35,7 @@ export class DuplicateExplorerComponent implements OnInit, OnChanges, OnDestroy 
   private scanHistory: (string | null)[] = [];
   private readonly scanNames = new Map<number, string>();
 
+  readonly archiveScanIds = signal<number[]>([]);
   readonly initialScanId = input<number | null>(null);
   readonly initialEntryId = input<number | null>(null);
   readonly entryOpen = output<Entry>();
@@ -70,7 +72,7 @@ export class DuplicateExplorerComponent implements OnInit, OnChanges, OnDestroy 
     } else {
       this.groupRequest?.unsubscribe();
       this.results.set(null); this.problem.set(null); this.loading.set(false);
-      this.submitted = undefined; this.closeGroup();
+      this.submitted = undefined; this.archiveScanIds.set([]); this.closeGroup();
     }
   }
 
@@ -118,11 +120,11 @@ export class DuplicateExplorerComponent implements OnInit, OnChanges, OnDestroy 
     try { request = this.buildRequest(); }
     catch (error) {
       this.groupRequest?.unsubscribe(); this.loading.set(false);
-      this.results.set(null); this.closeGroup(); this.submitted = undefined;
+      this.results.set(null); this.closeGroup(); this.submitted = undefined; this.archiveScanIds.set([]);
       this.problem.set({ code: 'INVALID_FILTER', message: (error as Error).message });
       return;
     }
-    this.submitted = request; this.history = []; this.closeGroup();
+    this.submitted = request; this.archiveScanIds.set([...request.scanIds]); this.history = []; this.closeGroup();
     this.loadGroups(null);
   }
   next(): void {
@@ -160,6 +162,7 @@ export class DuplicateExplorerComponent implements OnInit, OnChanges, OnDestroy 
     if (entry.scanId && entry.parentId > 0) this.directoryOpen.emit({ scanId: entry.scanId, entryId: entry.parentId });
   }
   formatModified(entry: Entry): string {
+    if (entry.modifiedSec == null || entry.modifiedNano == null) return 'Unknown';
     return new Date(entry.modifiedSec * 1000 + Math.floor(entry.modifiedNano / 1_000_000)).toLocaleString();
   }
 
