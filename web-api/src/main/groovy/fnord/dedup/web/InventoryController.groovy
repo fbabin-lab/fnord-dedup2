@@ -10,8 +10,12 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping('/api/v1')
 class InventoryController {
     private final InventoryService inventory
+    private final SignatureService signatures
 
-    InventoryController(InventoryService inventory) { this.inventory = inventory }
+    InventoryController(InventoryService inventory, SignatureService signatures) {
+        this.inventory = inventory
+        this.signatures = signatures
+    }
 
     @GetMapping('/dashboard')
     Map dashboard() { inventory.dashboard() }
@@ -37,15 +41,15 @@ class InventoryController {
 
     @GetMapping('/scans/{scanId}/entries/{entryId}')
     Map entry(@PathVariable('scanId') String scanId, @PathVariable('entryId') String entryId) {
-        inventory.entry(InventoryService.positiveId(scanId), InventoryService.positiveId(entryId))
+        signatures.entrySignals(inventory.entry(InventoryService.positiveId(scanId), InventoryService.positiveId(entryId)))
     }
 
     @GetMapping('/scans/{scanId}/entries/{entryId}/children')
     Map children(@PathVariable('scanId') String scanId, @PathVariable('entryId') String entryId,
                  @RequestParam(value='limit', required=false) String limit,
                  @RequestParam(value='cursor', required=false) String cursor) {
-        inventory.children(InventoryService.positiveId(scanId), InventoryService.positiveId(entryId),
-                           limit, cursor)
+        signatures.pageSignals(inventory.children(InventoryService.positiveId(scanId), InventoryService.positiveId(entryId),
+                           limit, cursor))
     }
 
     @GetMapping('/scans/{scanId}/entries/{entryId}/breadcrumbs')

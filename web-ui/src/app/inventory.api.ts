@@ -1,16 +1,36 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
+import { Subject } from 'rxjs';
 import {
   Breadcrumb, ChildPage, Dashboard, DatabaseStatus, DuplicateOccurrencePage,
   DuplicatePage, DuplicateRequest, Entry, FileSearchPage,
   FileSearchRequest, Page, Registration, SavedSearch, SavedSearchList, Scan,
   ScanError, ScanFilters, Scenario, ScenarioConfig, ScenarioListItem, ScenarioGroup,
-  ScenarioDecision, ScenarioPage
+  ScenarioDecision, ScenarioPage, Signature, SignatureChange, SignatureMatches
 } from './inventory.models';
 
 @Injectable({ providedIn: 'root' })
 export class InventoryApi {
   private readonly http = inject(HttpClient);
+  readonly signatureChanges = new Subject<SignatureChange>();
+
+  signatures(cursor: string | null, limit = 100) {
+    let params = new HttpParams().set('limit', limit);
+    if (cursor) params = params.set('cursor', cursor);
+    return this.http.get<Page<Signature>>('/api/v1/signatures', { params });
+  }
+  saveSignature(id: string | null, body: { tag: string; memo: string; scanId?: number; entryId?: number }) {
+    return id ? this.http.put<Signature>('/api/v1/signatures/' + encodeURIComponent(id), body) :
+      this.http.post<Signature>('/api/v1/signatures', body);
+  }
+  deleteSignature(id: string) {
+    return this.http.delete<void>('/api/v1/signatures/' + encodeURIComponent(id));
+  }
+  signatureMatches(id: string, cursor: string | null, limit = 100) {
+    let params = new HttpParams().set('limit', limit);
+    if (cursor) params = params.set('cursor', cursor);
+    return this.http.get<SignatureMatches>('/api/v1/signatures/' + encodeURIComponent(id) + '/matches', { params });
+  }
 
   registration() { return this.http.get<Registration>('/api/v1/database'); }
   status() { return this.http.get<DatabaseStatus>('/api/v1/database/status'); }

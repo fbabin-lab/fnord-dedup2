@@ -9,9 +9,13 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping('/api/v1/search')
 class FileSearchController {
     private final FileSearchService search
+    private final SignatureService signatures
 
-    FileSearchController(FileSearchService search) { this.search = search }
+    FileSearchController(FileSearchService search, SignatureService signatures) {
+        this.search = search
+        this.signatures = signatures
+    }
 
     @PostMapping('/files')
-    Map files(@RequestBody(required=false) Map request) { search.search(request ?: [:]) }
+    Map files(@RequestBody(required=false) Map request) { signatures.pageSignals(search.search(request ?: [:])) }
 }

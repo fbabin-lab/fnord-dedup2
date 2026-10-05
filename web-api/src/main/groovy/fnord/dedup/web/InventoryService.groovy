@@ -89,10 +89,13 @@ class InventoryService {
         read { Connection c, Map ignored ->
             Map scan = requiredScan(c, scanId)
             Map result = requiredEntry(c, scan, entryId)
-            if (result.sha256) {
+            result.scanId = scanId
+            result.algorithm = scan.algorithm
+            if (result.kind == 'FILE' && scan.algorithm == 'SHA-256' && result.sha256) {
                 result.duplicateCount = scalar(c, '''SELECT count(*) FROM entries e
                     JOIN hashes h USING (scan_id,entry_id)
-                    WHERE e.kind='FILE' AND e.size=? AND h.sha256=?''',
+                    JOIN scans s USING (scan_id)
+                    WHERE e.kind='FILE' AND s.algorithm='SHA-256' AND e.size=? AND h.sha256=?''',
                     [Long.parseLong(result.size as String), result.sha256])
             } else result.duplicateCount = null
             result.relatedErrors = rows(c, '''SELECT phase,message,recorded_at_ms
@@ -113,11 +116,16 @@ class InventoryService {
             Map scan = requiredScan(c, scanId)
             Map directory = requiredEntry(c, scan, entryId)
             if (directory.kind != 'DIRECTORY') throw invalid('Children are available only for a directory.')
-            StringBuilder sql = new StringBuilder('''WITH children AS (
+            StringBuilder sql = new StringBuilder('''WITH duplicate_stats AS (
+                SELECT e.size,h.sha256,count(*) AS copies FROM entries e
+                JOIN hashes h USING (scan_id,entry_id) JOIN scans s USING (scan_id)
+                WHERE e.kind='FILE' AND s.algorithm='SHA-256' GROUP BY e.size,h.sha256
+            ), children AS (
                 SELECT e.entry_id,e.parent_id,e.relative_path,e.filename,e.kind,e.size,
-                    e.modified_sec,e.modified_nano,h.sha256,
+                    e.modified_sec,e.modified_nano,h.sha256,ds.copies AS duplicate_count,
                     CASE WHEN e.kind='DIRECTORY' THEN 0 ELSE 1 END AS rank
                 FROM entries e LEFT JOIN hashes h USING (scan_id,entry_id)
+                LEFT JOIN duplicate_stats ds ON e.kind='FILE' AND ds.size=e.size AND ds.sha256=h.sha256
                 WHERE e.scan_id=? AND e.parent_id=?
             ) SELECT * FROM children WHERE 1=1''')
             List values = [scanId, entryId]
@@ -129,7 +137,10 @@ class InventoryService {
             }
             sql.append(' ORDER BY rank,filename,entry_id LIMIT ?')
             values.add(limit + 1)
-            List<Map> found = rows(c, sql.toString(), values) { ResultSet r -> entryMap(r, scan.root as String) }
+            List<Map> found = rows(c, sql.toString(), values) { ResultSet r ->
+                entryMap(r, scan.root as String) + [scanId: scanId, algorithm: scan.algorithm,
+                    duplicateCount: r.getObject('duplicate_count')]
+            }
             boolean hasMore = found.size() > limit
             if (hasMore) found.remove(found.size() - 1)
             Map last = found ? found.last() : null

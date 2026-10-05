@@ -110,14 +110,15 @@
     <div><span>{{ copy.duplicateOccurrences }}</span><strong>{{ result.summary.occurrences }}</strong></div>
     <div><span>{{ copy.observedBytes }}</span><strong>{{ formatBytes(result.summary.observedBytes) }}</strong></div>
   </section>
+  <app-candidate-legend />
   <section class="panel results-panel">
     <div class="table-wrap"><table>
       <thead><tr><th>{{ copy.samplePath }}</th><th class="number">{{ copy.size }}</th><th class="number">{{ copy.duplicateOccurrences }}</th>
         <th class="number">{{ copy.scansPerGroup }}</th><th class="number">{{ copy.matchingOccurrences }}</th><th class="number">{{ copy.observedBytes }}</th><th>{{ copy.actions }}</th></tr></thead>
       <tbody>
         @for (group of result.items; track group.groupId) {
-          <tr [class.selected-group]="selectedGroup()?.groupId === group.groupId">
-            <td class="path-text">{{ group.samplePath }}</td><td class="number" [title]="group.size + ' ' + copy.bytes">{{ formatBytes(group.size) }}</td>
+          <tr [class.selected-group]="selectedGroup()?.groupId === group.groupId" [class.signature-row]="group.signatureMatch" [class.duplicate-row]="group.duplicateCandidate">
+            <td class="path-text">{{ group.samplePath }} <app-candidate-badges [value]="group" /></td><td class="number" [title]="group.size + ' ' + copy.bytes">{{ formatBytes(group.size) }}</td>
             <td class="number">{{ group.occurrences }}</td><td class="number">{{ group.scanCount }}</td><td class="number">{{ group.matchingOccurrences }}</td>
             <td class="number">{{ formatBytes(group.observedBytes) }}</td><td><button type="button" class="text-action" (click)="openGroup(group)"
               aria-controls="duplicate-occurrences" [attr.aria-expanded]="selectedGroup()?.groupId === group.groupId">{{ copy.viewOccurrences }}</button></td>
@@ -146,11 +147,12 @@
         <thead><tr><th>{{ copy.scanLabel }}</th><th>{{ copy.path }}</th><th>{{ copy.modified }}</th><th>{{ copy.matchesFilters }}</th><th>{{ copy.actions }}</th></tr></thead>
         <tbody>
           @for (item of listing.items; track item.scanId + ':' + item.entryId) {
-            <tr><td><button type="button" class="text-action" (click)="scanOpen.emit(item.scanId!)">{{ item.scanName }}</button></td>
-              <td class="path-text">{{ item.path }} @if (item.hasError) { <span class="error-flag">{{ copy.hasError }}</span> }</td>
+            <tr [class.signature-row]="item.signatureMatch" [class.duplicate-row]="item.duplicateCandidate"><td><button type="button" class="text-action" (click)="scanOpen.emit(item.scanId!)">{{ item.scanName }}</button></td>
+              <td class="path-text">{{ item.path }} <app-candidate-badges [value]="item" /> @if (item.hasError) { <span class="error-flag">{{ copy.hasError }}</span> }</td>
               <td>{{ formatModified(item) }}</td><td>{{ item.matchesFilters ? copy.matchesFilters : copy.outsideFilters }}</td>
               <td class="actions"><button type="button" class="text-action" (click)="entryOpen.emit(item)">{{ copy.details }}</button>
-                <button type="button" class="text-action" (click)="openContainingDirectory(item)">{{ copy.containingDirectory }}</button></td></tr>
+                <button type="button" class="text-action" (click)="openContainingDirectory(item)">{{ copy.containingDirectory }}</button>
+                <button type="button" class="text-action" (click)="signatureOpen.emit(item)">{{ item.signatureMatch ? 'Edit signature' : 'Add signature' }}</button></td></tr>
           }
         </tbody>
       </table></div>

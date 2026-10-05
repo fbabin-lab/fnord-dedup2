@@ -184,7 +184,7 @@ class FileSearchService {
             ), matches AS (
               SELECT e.scan_id,e.entry_id,e.parent_id,e.relative_path,e.filename,e.kind,
                      e.size,e.modified_sec,e.modified_nano,h.sha256,s.name AS scan_name,
-                     s.root AS scan_root,ds.copies AS duplicate_count,
+                     s.root AS scan_root,s.algorithm,ds.copies AS duplicate_count,
                      ds.scan_copies AS duplicate_scan_count,
                      ''' + errorSql + ''' AS has_error,
                      ''' + sortExpression + ''' AS sort_key
@@ -299,6 +299,7 @@ class FileSearchService {
         String relative = result.getString('relative_path')
         String sha = result.getString('sha256')
         [scanId: result.getLong('scan_id'), scanName: result.getString('scan_name'), scanRoot: root,
+         algorithm: result.getString('algorithm'),
          entryId: result.getLong('entry_id'), parentId: result.getLong('parent_id'),
          relativePath: relative, path: StoredPath.join(root, relative),
          filename: result.getString('filename'), kind: result.getString('kind'),

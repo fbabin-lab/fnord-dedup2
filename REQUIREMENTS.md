@@ -62,6 +62,12 @@ Use independent versioned image tables and bounded Appender generations. RUNNING
 
 CLI/API must expose images, image-status, image-list, image-errors and result-based filesystem/partition/component/entry reports. Repeating images resumes this phase; neither ordinary resume nor archives implicitly invokes it. Provide explicit retry/force, finite resource limits and private temporary storage outside the source tree. See docs/IMAGES.md for runtime dependencies, supported variants, exact defaults, retry semantics and remaining scope.
 
+## Optional WebUI signature store
+
+Persist content signatures in the separate Web state database, never in scanner data. A signature is the selected regular file's exact byte size plus full saved SHA-256, with an optional tag and memo. Use a versioned transactional state migration, preserve saved searches and scenarios, and prevent repeated content identities. Signatures apply to all current and future scans using the same state database, independently of filenames or scan IDs.
+
+Allow adding signatures from the file explorer and file details, editing notes, deleting signatures, and browsing bounded matching-file pages. A matching singleton and every matching duplicate copy are removal candidates. Distinguish signature matches and confirmed duplicate candidates using separate row colors and text badges in directory browsing, file search, details, and duplicate browsing; show both when applicable. Missing hashes stay unresolved and must not match by size alone. The CLI's explicit hash-complete mode can save missing hashes. Web requests never hash or modify source files, write scanner tables, execute removal, or mutate existing scenario plans.
+
 ## Verification and non-goals
 
 Verify real persistence/reopening, scan isolation, changed files, unusual names, non-regular files, batched publication, corruption/partial results, canonical identity, limits and cleanup. Use actual SIGTERM/SIGKILL tests on packaged launchers. Native format/platform claims require native fixtures, not mock-provider success. Source-image hashes before/after inspection must match. Test writes stay within generated fixtures.

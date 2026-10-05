@@ -47,7 +47,22 @@ export interface ScanError {
   message: string;
   recordedAtMs: number;
 }
-export interface Entry {
+export interface Signature {
+  id: string; algorithm: 'SHA-256'; size: string; sha256: string; tag: string; memo: string;
+  createdAt: string; updatedAt: string;
+}
+export interface CandidateSignals {
+  signature?: Signature | null;
+  signatureMatch?: boolean;
+  duplicateCandidate?: boolean;
+  removalCandidate?: boolean;
+}
+export interface SignatureChange { signature: Signature; removed: boolean; }
+export interface SignatureMatches extends Page<Entry> {
+  signature: Signature; total: number; persistedHashesOnly: boolean;
+}
+export interface Entry extends CandidateSignals {
+  algorithm?: string;
   scanId?: number;
   scanName?: string;
   scanRoot?: string;
@@ -167,7 +182,7 @@ export interface ScenarioDecision extends Entry {
   manualDecision: 'KEEP' | 'REMOVE' | 'UNDECIDED' | null;
 }
 export interface ScenarioPage<T> extends Page<T> { revision: number; generationId: string; stale: boolean; }
-export interface DuplicateGroup {
+export interface DuplicateGroup extends CandidateSignals {
   groupId: string;
   size: string;
   sha256: string;

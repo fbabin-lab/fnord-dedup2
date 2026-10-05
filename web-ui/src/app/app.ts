@@ -6,18 +6,22 @@ import { DirectoryTreeComponent } from './directory-tree';
 import { FileSearchComponent } from './file-search';
 import { DuplicateExplorerComponent } from './duplicate-explorer';
 import { ScenarioBuilderComponent } from './scenario-builder';
+import { CandidateBadgesComponent, CandidateLegendComponent, applySignatureChange } from './candidate-badges';
+import { SignatureEditorComponent } from './signature-editor';
+import { SignatureStoreComponent } from './signature-store';
 import { InventoryApi } from './inventory.api';
 import {
   ApiError, Breadcrumb, ChildPage, Dashboard, DatabaseStatus, DuplicateRequest, Entry, Page,
   Registration, Scan, ScanError, ScanFilters
 } from './inventory.models';
 
-type View = 'dashboard' | 'scans' | 'scan' | 'explorer' | 'search' | 'duplicates' | 'scenarios' | 'errors';
+type View = 'dashboard' | 'scans' | 'scan' | 'explorer' | 'search' | 'duplicates' | 'scenarios' | 'signatures' | 'errors';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [DirectoryTreeComponent, FileSearchComponent, DuplicateExplorerComponent, ScenarioBuilderComponent],
+  imports: [DirectoryTreeComponent, FileSearchComponent, DuplicateExplorerComponent, ScenarioBuilderComponent,
+    CandidateBadgesComponent, CandidateLegendComponent, SignatureEditorComponent, SignatureStoreComponent],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
@@ -26,6 +30,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private pageRequests = new Subscription();
   private statusRequest?: Subscription;
   private detailRequest?: Subscription;
+  private signatureChanges?: Subscription;
   private routeKey = '';
   private readonly onHashChange = () => this.syncRoute();
   private scanCursor: string | null = null;
@@ -52,6 +57,7 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly breadcrumbs = signal<Breadcrumb[]>([]);
   readonly errors = signal<Page<ScanError> | null>(null);
   readonly selectedEntry = signal<Entry | null>(null);
+  readonly signatureEntry = signal<Entry | null>(null);
   readonly loading = signal(false);
   readonly detailLoading = signal(false);
   readonly problem = signal<ApiError | null>(null);
@@ -61,6 +67,10 @@ export class AppComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     window.addEventListener('hashchange', this.onHashChange);
+    this.signatureChanges = this.api.signatureChanges.subscribe(change => {
+      this.children.update(page => page ? { ...page, items: page.items.map(item => applySignatureChange(item, change)) } : null);
+      this.selectedEntry.update(entry => entry ? applySignatureChange(entry, change) : null);
+    });
     this.api.registration().subscribe({
       next: value => this.registration.set(value),
       error: () => this.registration.set(null)
@@ -73,6 +83,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.pageRequests.unsubscribe();
     this.statusRequest?.unsubscribe();
     this.detailRequest?.unsubscribe();
+    this.signatureChanges?.unsubscribe();
   }
 
   navigate(path: string): void { window.location.hash = '#' + path; this.syncRoute(); }
@@ -99,6 +110,10 @@ export class AppComponent implements OnInit, OnDestroy {
   findDuplicates(entry: Entry): void {
     const id = entry.scanId ?? this.scanId();
     if (id) this.openDuplicates(id, entry.entryId);
+  }
+  openSignature(entry: Entry): void {
+    if (entry.kind !== 'FILE' || !entry.sha256) return;
+    this.signatureEntry.set({ ...entry, scanId: entry.scanId ?? this.scanId() ?? undefined });
   }
   openScenarios(): void { this.scenarioSeed.set(null); this.navigate('/scenarios'); }
   openScenario(id: string | null): void {
@@ -212,7 +227,10 @@ export class AppComponent implements OnInit, OnDestroy {
     this.searchDirectoryId.set(null);
     this.duplicateEntryId.set(null);
     this.scenarioId.set(null);
-    if (parts[0] === 'scans' && parts.length === 1) {
+    this.signatureEntry.set(null);
+    if (parts[0] === 'signatures' && parts.length === 1) {
+      this.view.set('signatures'); this.scanId.set(null);
+    } else if (parts[0] === 'scans' && parts.length === 1) {
       this.view.set('scans'); this.scanId.set(null);
     } else if (parts[0] === 'search' && parts.length === 1) {
       this.view.set('search'); this.scanId.set(null);
@@ -261,7 +279,7 @@ export class AppComponent implements OnInit, OnDestroy {
         recent: this.api.scans(null, { name: '', phase: '', hasErrors: '' }, 10)
       }), result => { this.dashboard.set(result.metrics); this.scans.set(result.recent); });
     } else if (this.view() === 'scans') this.loadScanPage();
-    else if (this.view() === 'search' || this.view() === 'duplicates' || this.view() === 'scenarios') this.loading.set(false);
+    else if (this.view() === 'search' || this.view() === 'duplicates' || this.view() === 'scenarios' || this.view() === 'signatures') this.loading.set(false);
     else {
       const id = this.scanId();
       if (!id) return;

@@ -5,6 +5,7 @@ import { Subject, Subscription, debounceTime } from 'rxjs';
 import { copy } from './copy';
 import { requestFromSearch } from './scenario-form';
 import { InventoryApi } from './inventory.api';
+import { CandidateBadgesComponent, CandidateLegendComponent, applySignatureChange } from './candidate-badges';
 import {
   ApiError, DuplicateRequest, Entry, EntryKind, FileSearchPage, FileSearchRequest, NameOperator,
   SavedSearch, Scan
@@ -41,7 +42,7 @@ interface SearchForm {
 @Component({
   selector: 'app-file-search',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, CandidateBadgesComponent, CandidateLegendComponent],
   templateUrl: './file-search.html',
   styleUrl: './file-search.css'
 })
@@ -54,6 +55,7 @@ export class FileSearchComponent implements OnInit, OnDestroy {
   private history: (string | null)[] = [];
 
   readonly entryOpen = output<Entry>();
+  readonly signatureOpen = output<Entry>();
   readonly directoryOpen = output<{ scanId: number; entryId: number }>();
   readonly scanOpen = output<number>();
   readonly scenarioOpen = output<DuplicateRequest>();
@@ -75,6 +77,9 @@ export class FileSearchComponent implements OnInit, OnDestroy {
   savedDescription = '';
 
   ngOnInit(): void {
+    this.subscriptions.add(this.api.signatureChanges.subscribe(change => {
+      this.results.update(page => page ? { ...page, items: page.items.map(item => applySignatureChange(item, change)) } : null);
+    }));
     const initialScan = this.initialScanId();
     const initialDirectory = this.initialDirectoryId();
     if (initialScan) this.form.scanIds = [initialScan];

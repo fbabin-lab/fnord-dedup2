@@ -44,7 +44,7 @@ class ScenarioServiceTest {
             assert failure { f.service.update(scenarioId, body('Stale') + [revision: 1]) } == 'SCENARIO_REVISION_CONFLICT'
             assert failure { f.service.create(body('Changed')) } == 'SCENARIO_EXISTS'
             assert failure { f.service.delete(scenarioId, 1) } == 'SCENARIO_REVISION_CONFLICT'
-            f.state.withState { c -> assert ScenarioSql.rows(c, 'SELECT version FROM web_schema_info', []) { it.getInt(1) } == [2] }
+            f.state.withState { c -> assert ScenarioSql.rows(c, 'SELECT version FROM web_schema_info', []) { it.getInt(1) } == [3] }
         }
         Map reopened = services(f.database as Path, f.statePath as Path)
         reopened.state.withCloseable {
