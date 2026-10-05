@@ -10,7 +10,7 @@
         (click)="navigate('/dashboard')">{{ copy.dashboard }}</button>
       <button type="button" class="nav-item" [class.active]="view() === 'scans' || view() === 'scan'"
         (click)="navigate('/scans')">{{ copy.scans }}</button>
-      <button type="button" class="nav-item" [class.active]="view() === 'explorer'"
+      <button type="button" class="nav-item" [class.active]="view() === 'explorer' || view() === 'archive'"
         (click)="openExplorer()">{{ copy.explorer }}</button>
       <button type="button" class="nav-item" [class.active]="view() === 'search'"
         (click)="navigate('/search')">{{ copy.search }}</button>
@@ -50,6 +50,8 @@
             <h1>{{ scan()?.name || copy.scanDetail }}</h1><p class="lead path-text">{{ scan()?.root }}</p>
           } @else if (view() === 'explorer') {
             <h1>{{ copy.explorer }}</h1><p class="lead">{{ scan()?.name }} · {{ copy.explorerDescription }}</p>
+          } @else if (view() === 'archive') {
+            <h1>File Explorer · archive contents</h1><p class="lead">Browse scanned archive members without extracting the source again.</p>
           } @else if (view() === 'search') {
             <h1>{{ copy.search }}</h1><p class="lead">{{ copy.searchDescription }}</p>
           } @else if (view() === 'duplicates') {
@@ -62,7 +64,7 @@
             <h1>{{ copy.errors }}</h1><p class="lead">{{ scan()?.name }} · {{ copy.errorsDescription }}</p>
           }
         </div>
-        @if (view() !== 'search' && view() !== 'duplicates' && view() !== 'scenarios' && view() !== 'signatures') {
+        @if (view() !== 'search' && view() !== 'duplicates' && view() !== 'scenarios' && view() !== 'signatures' && view() !== 'archive') {
           <button type="button" (click)="refresh()" [disabled]="loading()">{{ copy.retry }}</button>
         }
       </div>
@@ -94,6 +96,7 @@
               <div class="metric"><span>{{ copy.imageRuns }}</span><strong>{{ metrics.imageRuns }}</strong></div>
             }
           </section>
+          <app-archive-summary [scanId]="null" />
           <p class="hint">{{ copy.hashWarning }}</p>
           <section class="panel">
             <div class="section-heading">
@@ -187,6 +190,7 @@
             <div class="metric"><span>{{ copy.pendingDirectories }}</span><strong>{{ current.pendingDirectories }}</strong></div>
             <div class="metric"><span>{{ copy.errors }}</span><strong>{{ current.errors }}</strong></div>
           </section>
+          <app-archive-summary [scanId]="current.scanId" />
           <section class="panel">
             <h2>{{ copy.scanDetail }}</h2>
             <dl class="detail-list">
@@ -227,14 +231,17 @@
                     <th>{{ copy.modified }}</th><th>{{ copy.hashState }}</th><th>Candidate status</th><th>{{ copy.actions }}</th></tr></thead>
                   <tbody>
                     @for (item of listing.items; track item.entryId) {
-                      <tr [class.signature-row]="item.signatureMatch" [class.duplicate-row]="item.duplicateCandidate"><td><button type="button" class="text-action file-name" (click)="openEntry(item)">
+                      <tr [class.signature-row]="item.signatureMatch" [class.duplicate-row]="item.duplicateCandidate"><td><button type="button" class="text-action file-name" (click)="exploreEntry(item)">
                         <span aria-hidden="true">{{ item.kind === 'DIRECTORY' ? '▸' : '•' }}</span>
-                        {{ item.filename }}</button></td><td>{{ item.kind }}</td>
+                        {{ item.filename }}</button></td><td>{{ item.archive ? 'ARCHIVE · ' + item.archive.status : item.kind }}</td>
                         <td class="number">{{ item.kind === 'FILE' ? formatBytes(item.size) : '—' }}</td>
                         <td>{{ formatModified(item) }}</td>
                         <td>{{ item.kind === 'FILE' ? (item.sha256 ? copy.hashed : copy.unknownHash) : '—' }}</td>
                         <td><app-candidate-badges [value]="item" /></td>
-                        <td>@if (item.kind === 'FILE') {
+                        <td>@if (item.archive) {
+                          <button type="button" class="text-action" (click)="openArchive(item)">Browse archive</button>
+                          <button type="button" class="text-action" (click)="openEntry(item)">File details</button>
+                        } @if (item.kind === 'FILE') {
                           <button type="button" class="text-action" (click)="openSignature(item)" [disabled]="!item.sha256"
                             [title]="item.sha256 ? 'Save or edit this content signature' : 'Run CLI hash --hash-complete to save a hash first.'">
                             {{ item.signatureMatch ? 'Edit signature' : 'Add signature' }}</button>
@@ -251,6 +258,10 @@
             </section>
           </div>
         }
+      }
+
+      @if (archiveRoute(); as location) {
+        <app-archive-browser [route]="location" (entryOpen)="openEntry($event)" />
       }
 
       @if (view() === 'search') {
@@ -317,6 +328,13 @@
               <div><dt>{{ copy.databaseOccurrences }}</dt>
                 <dd>{{ file.duplicateCount === null ? copy.unknownHash : file.duplicateCount }}</dd></div>
             </dl>
+            @if (file.archive) {
+              <p><button type="button" (click)="openArchive(file)">Browse archive contents</button> · {{ file.archive.status }}</p>
+            }
+            @if (file.filesystemOccurrenceCount !== undefined) {
+              <p>Filesystem occurrences: {{ file.filesystemOccurrenceCount }} · Archive member occurrences: {{ file.archiveOccurrenceCount }} (all scans).</p>
+              <p class="hint">Archive matches are separate analysis candidates and do not enter ordinary cleanup plans.</p>
+            }
             @if (file.kind === 'FILE' && file.sha256) {
               <div class="actions-row"><button type="button" (click)="findDuplicates(file)">{{ copy.findDuplicates }}</button>
                 <button type="button" class="secondary" (click)="openSignature(file)">{{ file.signatureMatch ? 'Edit signature' : 'Add signature' }}</button></div>
@@ -327,6 +345,9 @@
               <dl class="detail-list"><div><dt>Signature tag</dt><dd>{{ signature.tag || '—' }}</dd></div>
                 <div><dt>Signature memo</dt><dd class="signature-note">{{ signature.memo || '—' }}</dd></div></dl>
               <p class="hint">All files with this size and SHA-256 are removal candidates, including every duplicate copy.</p>
+            }
+            @if (file.archiveOccurrenceCount && file.scanId) {
+              <app-file-archive-matches [entry]="file" />
             }
             @if (file.relatedErrors?.length) {
               <h3>{{ copy.relatedErrors }}</h3>

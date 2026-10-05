@@ -19,7 +19,7 @@ class SignatureServiceTest {
     @Test void flagsSingletonsAndEveryDuplicateCopyWithoutChangingScannerOrSources() {
         Map f = fixture()
         f.state.withCloseable {
-            InventoryController inventory = new InventoryController(f.inventory, f.service)
+            InventoryController inventory = new InventoryController(f.inventory, f.service, new ArchiveService(f.scanner))
             FileSearchController search = new FileSearchController(new FileSearchService(f.scanner), f.service)
             DuplicateController duplicates = new DuplicateController(new DuplicateService(f.scanner), f.service)
             Map before = inventory.children('1', '1', '100', null)

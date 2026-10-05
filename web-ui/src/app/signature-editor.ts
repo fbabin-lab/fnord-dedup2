@@ -17,6 +17,7 @@ import { formatBytes } from './file-values';
         <p>{{ formatBytes(entry()?.size || current?.size || '0') }} · SHA-256</p>
         <p class="hash-text">{{ entry()?.sha256 || current?.sha256 }}</p>
         <p>Every file with this size and hash is a removal candidate, including all duplicate copies.</p>
+        @if (entry()?.archiveMember) { <p>Inside an archive: a separate analysis candidate, never a direct file-deletion action.</p> }
         <label>Tag (optional)<input name="signatureTag" [(ngModel)]="tag" maxlength="120" autofocus [disabled]="busy()"></label>
         <label>Memo (optional)<textarea name="signatureMemo" [(ngModel)]="memo" maxlength="4000" rows="4" [disabled]="busy()"></textarea></label>
         @if (problem()) { <p class="message error" role="alert">{{ problem() }}</p> }
@@ -60,7 +61,10 @@ export class SignatureEditorComponent implements OnInit, AfterViewInit, OnDestro
     this.busy.set(true); this.problem.set(null);
     const body = { tag: this.tag, memo: this.memo,
       ...(!this.current ? { scanId: entry!.scanId, entryId: entry!.entryId } : {}) };
-    this.request = this.api.saveSignature(this.current?.id || null, body).subscribe({
+    const operation = !this.current && entry?.archiveMember ?
+      this.api.saveArchiveSignature(entry.archiveMember, { tag: this.tag, memo: this.memo }) :
+      this.api.saveSignature(this.current?.id || null, body);
+    this.request = operation.subscribe({
       next: signature => {
         this.api.signatureChanges.next({ signature, removed: false }); this.busy.set(false); this.closed.emit();
       },

@@ -42,7 +42,7 @@ class SignatureService {
             throw invalid('A signature requires a recorded file and optional tag and memo.')
         long scanId = positiveId(body.scanId)
         long entryId = positiveId(body.entryId)
-        Map notes = normalizeNotes(body)
+        normalizeNotes(body)
         // Scanner -> state is also the scenario generator's lock order.
         scanner.withConnection { Connection c, ignored ->
             SchemaInspector.inspect(c)
@@ -54,26 +54,32 @@ class SignatureService {
             }
             if (!found) throw new ApiFailure('ENTRY_NOT_FOUND', HttpStatus.NOT_FOUND, 'Recorded file not found.')
             Map file = found[0]
-            if (file.kind != 'FILE') throw invalid('Only regular files can be added to the signature store.')
-            if (file.algorithm != 'SHA-256') throw new ApiFailure('UNSUPPORTED_ALGORITHM',
-                HttpStatus.UNPROCESSABLE_ENTITY, 'Signatures require SHA-256 observations.')
-            if (!file.sha256) throw new ApiFailure('HASH_UNAVAILABLE', HttpStatus.UNPROCESSABLE_ENTITY,
-                'This file has no saved hash. Run the CLI hash command with --hash-complete, then refresh.')
-            if (file.size < 0 || !(file.sha256 ==~ /[0-9a-f]{64}/))
-                throw new ApiFailure('INVALID_INVENTORY', HttpStatus.UNPROCESSABLE_ENTITY,
-                    'The recorded size or SHA-256 is invalid.')
-            state.transaction { Connection current ->
-                if (rows(current, 'SELECT id FROM signatures WHERE size=? AND sha256=?',
-                    [file.size, file.sha256]) { it.getString(1) })
-                    throw new ApiFailure('SIGNATURE_EXISTS', HttpStatus.CONFLICT,
-                        'This content already has a signature. Refresh and edit its tag or memo.')
-                String id = UUID.randomUUID().toString()
-                execute(current, '''INSERT INTO signatures
-                    VALUES (?,'SHA-256',?,?,?,?,current_timestamp,current_timestamp)''',
-                    [id, file.size, file.sha256, notes.tag, notes.memo])
-                required(current, id)
-            }
+            createFromEvidence(file, body)
         } as Map
+    }
+
+    /** Internal only: caller derives evidence while holding scanner access, never an HTTP content body. */
+    Map createFromEvidence(Map file, Map body) {
+        Map notes = normalizeNotes(body)
+        if (file.kind != 'FILE') throw invalid('Only regular files can be added to the signature store.')
+        if (file.algorithm != 'SHA-256') throw new ApiFailure('UNSUPPORTED_ALGORITHM',
+            HttpStatus.UNPROCESSABLE_ENTITY, 'Signatures require SHA-256 observations.')
+        if (!file.sha256) throw new ApiFailure('HASH_UNAVAILABLE', HttpStatus.UNPROCESSABLE_ENTITY,
+            'This file has no saved hash. Only complete saved SHA-256 evidence is eligible. Run the appropriate CLI hash or archive analysis, then refresh.')
+        if (ArchiveQueries.nonnegative(file.size) < 0 || !(file.sha256 ==~ /[0-9a-f]{64}/))
+            throw new ApiFailure('INVALID_INVENTORY', HttpStatus.UNPROCESSABLE_ENTITY,
+                'The recorded size or SHA-256 is invalid.')
+        state.transaction { Connection current ->
+            if (rows(current, 'SELECT id FROM signatures WHERE size=? AND sha256=?',
+                [ArchiveQueries.nonnegative(file.size), file.sha256]) { it.getString(1) })
+                throw new ApiFailure('SIGNATURE_EXISTS', HttpStatus.CONFLICT,
+                    'This content already has a signature. Refresh and edit its tag or memo.')
+            String id = UUID.randomUUID().toString()
+            execute(current, '''INSERT INTO signatures
+                VALUES (?,'SHA-256',?,?,?,?,current_timestamp,current_timestamp)''',
+                [id, ArchiveQueries.nonnegative(file.size), file.sha256, notes.tag, notes.memo])
+            required(current, id)
+        }
     }
 
     Map update(String id, Map body) {

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { chromium } from 'playwright';
 import { checkScenarioHttp, checkScenarioBrowser } from './scenario-smoke.mjs';
+import { checkArchiveFlow } from './archive-smoke.mjs';
 import { checkSignatureHttp, checkSignatureBrowser } from './signature-smoke.mjs';
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -178,4 +179,4 @@ async function main() {
     }
   }
 }
-main().catch(error => { console.error(error); process.exitCode = 1; });
+main().then(() => checkArchiveFlow({ project, output, httpOnly })).catch(error => { console.error(error); process.exitCode = 1; });

@@ -195,6 +195,7 @@ export class FileSearchComponent implements OnInit, OnDestroy {
   }
 
   formatModified(entry: Entry): string {
+    if (entry.modifiedSec == null || entry.modifiedNano == null) return 'Unknown';
     return new Date(entry.modifiedSec * 1000 + Math.floor(entry.modifiedNano / 1_000_000)).toLocaleString();
   }
 

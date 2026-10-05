@@ -61,7 +61,14 @@ export interface SignatureChange { signature: Signature; removed: boolean; }
 export interface SignatureMatches extends Page<Entry> {
   signature: Signature; total: number; persistedHashesOnly: boolean;
 }
+export interface ArchiveLocation { scanId: number; rootEntryId: number; chain: string; ordinal?: number; }
 export interface Entry extends CandidateSignals {
+  storageKind?: 'FILESYSTEM' | 'ARCHIVE_MEMBER';
+  archive?: { rootEntryId: number; status: string; resultId: string | null; reused: boolean; browsable: boolean } | null;
+  archiveMember?: ArchiveLocation;
+  filesystemOccurrenceCount?: number;
+  archiveOccurrenceCount?: number;
+  directCleanupEligible?: boolean;
   algorithm?: string;
   scanId?: number;
   scanName?: string;
@@ -73,8 +80,8 @@ export interface Entry extends CandidateSignals {
   filename: string;
   kind: string;
   size: string;
-  modifiedSec: number;
-  modifiedNano: number;
+  modifiedSec: number | null;
+  modifiedNano: number | null;
   sha256: string | null;
   hashState: string;
   duplicateCount?: number | null;

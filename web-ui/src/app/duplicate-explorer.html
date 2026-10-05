@@ -164,3 +164,7 @@
     }
   </section>
 }
+
+@if (archiveScanIds().length) {
+  <app-archive-analysis [scanIds]="archiveScanIds()" (entryOpen)="entryOpen.emit($event)" />
+}
